@@ -38,8 +38,8 @@ params = AttrDict(
     #n_mels set to the npy size
     n_mels=80, 
     n_specs=513,
-    n_fft=500,
-    hop_samples=256,
+    n_fft=400,
+    hop_samples=100,
     # frame number at once
     crop_mel_frames=62,  
 
