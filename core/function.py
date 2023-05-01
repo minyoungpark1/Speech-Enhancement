@@ -84,6 +84,10 @@ def train(train_loader, model, criterion, optimizer, lr_scheduler, scaler,
         optimizer.zero_grad()
         scaler.scale(loss).backward()
 
+        if args.max_norm != 0.0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
+
         scaler.step(optimizer)
         scaler.update()
 
