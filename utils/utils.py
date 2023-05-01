@@ -29,13 +29,13 @@ class ProgressMeter(object):
         num_digits = len(str(num_batches // 1))
         fmt = '{:' + str(num_digits) + 'd}'
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
-    
+
 
 @functools.lru_cache()
 def create_logger(output_dir, dist_rank=0, name=''):
     path = Path(output_dir)
     path.mkdir(parents=True, exist_ok=True)
-    
+
     # create logger
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
@@ -60,14 +60,14 @@ def create_logger(output_dir, dist_rank=0, name=''):
     file_handler.setFormatter(logging.Formatter(fmt=fmt, datefmt='%Y-%m-%d %H:%M:%S'))
     logger.addHandler(file_handler)
 
-    return logger        
-    
+    return logger
 
-def save_checkpoint(state, args, is_best, filename='checkpoint.pth.tar'):
-    path = Path(args.save)
+
+def save_checkpoint(state, path, is_best, filename='checkpoint.pth.tar'):
+    path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
-    
+
     torch.save(state, os.path.join(path, filename))
     if is_best:
-        shutil.copyfile(os.path.join(path, filename), 
-                        os.path.join(path, 'model_best.pth.tar'))    
+        shutil.copyfile(os.path.join(path, filename),
+                        os.path.join(path, 'model_best.pth.tar'))

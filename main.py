@@ -23,92 +23,90 @@ import torch.utils.data
 import torch.utils.data.distributed
 from timm.scheduler.cosine_lr import CosineLRScheduler
 
-from models.DLinear import Model as dlinear
-from datasets.data_lists import TICKERS
-from datasets.custom_dataset import CustomTimeSeriesDataset
+from config import get_config
+from models.DiffuSE import DiffuSE
+from datasets.voicebank_dataset import VoicebankDataset
 from core.function import train, validate
 from core.criterion import build_criterion
 from core.optimizer import build_optimizer
 from utils.utils import create_logger, save_checkpoint
 
-parser = argparse.ArgumentParser(description='Stock data training')
-model_names = ['dlinear', 'linear', 'nlinear', 'lstm',
-               ] 
-parser.add_argument('-a', '--arch', metavar='ARCH', default='dlinear',
-                    choices=model_names,
-                    help='model architecture: ' +
-                        ' | '.join(model_names) +
-                        ' (default: dlinear)')
+model_names = ['diffuse', 'scp-gan',
+               ]
 
-parser.add_argument('data', metavar='DIR',
-                    help='path to dataset')
-parser.add_argument('save', metavar='DIR',
-                    help='path to save')
-parser.add_argument('-j', '--workers', default=32, type=int, metavar='N',
-                    help='number of data loading workers (default: 32)')
-parser.add_argument('--epochs', default=100, type=int, metavar='N',
-                    help='number of total epochs to run')
-parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
-                    help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=4096, type=int,
-                    metavar='N',
-                    help='mini-batch size (default: 4096), this is the total '
-                         'batch size of all GPUs on all nodes when '
-                         'using Data Parallel or Distributed Data Parallel')
-parser.add_argument('--lr', '--learning-rate', default=0.6, type=float,
-                    metavar='LR', help='initial (base) learning rate', dest='lr')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
-                    help='momentum')
-parser.add_argument('--wd', '--weight-decay', default=1e-6, type=float,
-                    metavar='W', help='weight decay (default: 1e-6)',
-                    dest='weight_decay')
-parser.add_argument('-p', '--print-freq', default=10, type=int,
-                    metavar='N', help='print frequency (default: 10)')
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='path to latest checkpoint (default: none)')
-parser.add_argument('--world-size', default=-1, type=int,
-                    help='number of nodes for distributed training')
-parser.add_argument('--rank', default=-1, type=int,
-                    help='node rank for distributed training')
-parser.add_argument('--dist_url', default='env://', 
-                    help='url used to set up distributed training')
-parser.add_argument('--dist-backend', default='nccl', type=str,
-                    help='distributed backend')
-parser.add_argument('--seed', default=None, type=int,
-                    help='seed for initializing training. ')
-parser.add_argument('--gpu', default=None, type=int,
-                    help='GPU id to use.')
-parser.add_argument('--multiprocessing-distributed', action='store_true',
-                    help='Use multi-processing distributed training to launch '
-                         'N processes per node, which has N GPUs. This is the '
-                         'fastest way to use PyTorch for either single node or '
-                         'multi node data parallel training')
+def parse_option():
+    parser = argparse.ArgumentParser(description='Speech enhancement training script')
+    parser.add_argument('-a', '--arch', metavar='ARCH', default='diffuse',
+                        choices=model_names,
+                        help='model architecture: ' +
+                            ' | '.join(model_names) +
+                            ' (default: diffuse)')
 
-# other upgrades
-parser.add_argument('--optimizer', default='sgd', type=str,
-                    choices=['sgd', 'adamw', 'lars', 'lamb'],
-                    help='optimizer used (default: sgd)')
-parser.add_argument('--criterion', default='l1', type=str,
-                    choices=['mae', 'l1', 'mse', 'l2', 'quantile'],
-                    help='criterion used (default: l1)')
-parser.add_argument('--warmup-epochs', default=10, type=int, metavar='N',
-                    help='number of warmup epochs')
+    parser.add_argument('--output', default='output', type=str, metavar='PATH',
+                        help='root of output folder, the full path is <output>/<model_name>/<tag> (default: output)')
+    parser.add_argument('--tag', help='tag of experiment')
+    parser.add_argument('--cfg', type=str, required=True, metavar="FILE", help='path to config file', )
+    parser.add_argument(
+        "--opts",
+        help="Modify config options by adding 'KEY VALUE' pairs. ",
+        default=None,
+        nargs='+',
+    )
+    parser.add_argument('-j', '--workers', default=32, type=int, metavar='N',
+                        help='number of data loading workers (default: 32)')
+    parser.add_argument('--epochs', default=100, type=int, metavar='N',
+                        help='number of total epochs to run')
+    parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
+                        help='manual epoch number (useful on restarts)')
+    parser.add_argument('-b', '--batch-size', default=64, type=int,
+                        metavar='N',
+                        help='mini-batch size (default: 4096), this is the total '
+                             'batch size of all GPUs on all nodes when '
+                             'using Data Parallel or Distributed Data Parallel')
+    parser.add_argument('--lr', '--learning-rate', default=0.6, type=float,
+                        metavar='LR', help='initial (base) learning rate', dest='lr')
+    parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
+                        help='momentum')
+    parser.add_argument('--wd', '--weight-decay', default=1e-6, type=float,
+                        metavar='W', help='weight decay (default: 1e-6)',
+                        dest='weight_decay')
+    parser.add_argument('-p', '--print-freq', default=10, type=int,
+                        metavar='N', help='print frequency (default: 10)')
+    parser.add_argument('--resume', default='', type=str, metavar='PATH',
+                        help='path to latest checkpoint (default: none)')
+    parser.add_argument('--world-size', default=-1, type=int,
+                        help='number of nodes for distributed training')
+    parser.add_argument('--rank', default=-1, type=int,
+                        help='node rank for distributed training')
+    parser.add_argument('--dist_url', default='env://',
+                        help='url used to set up distributed training')
+    parser.add_argument('--dist-backend', default='nccl', type=str,
+                        help='distributed backend')
+    parser.add_argument('--seed', default=None, type=int,
+                        help='seed for initializing training. ')
+    parser.add_argument('--gpu', default=None, type=int,
+                        help='GPU id to use.')
+    parser.add_argument('--multiprocessing-distributed', action='store_true',
+                        help='Use multi-processing distributed training to launch '
+                             'N processes per node, which has N GPUs. This is the '
+                             'fastest way to use PyTorch for either single node or '
+                             'multi node data parallel training')
+    parser.add_argument('--optimizer', default='sgd', type=str,
+                        choices=['sgd', 'adamw', 'lars', 'lamb'],
+                        help='optimizer used (default: sgd)')
+    parser.add_argument('--criterion', default='l1', type=str,
+                        choices=['mae', 'l1', 'mse', 'l2', 'quantile'],
+                        help='criterion used (default: l1)')
+
+    args, unparsed = parser.parse_known_args()
+    config = get_config(args)
+
+    return args, config
 
 
-# Model arguments
-parser.add_argument('--seq_len', default=22, type=int,
-                    metavar='N', help='Input sequnece length (default: 22)')
-parser.add_argument('--pred_len', default=1, type=int,
-                    metavar='N', help='Output sequence length (default: 1)')
-parser.add_argument('--individual', default=False, 
-                    type=lambda x: (str(x).lower() in ['true','1', 'yes']),
-                    help='define whether you would build an individual linear model')
-parser.add_argument('--target', default='processed', type=str,
-                    choices=['processed', 'close',],
-                    help='Prediction target (close price vs. price percent change (processed))')
 
 def main():
-    args = parser.parse_args()
+    args, config = parse_option()
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -136,13 +134,13 @@ def main():
         args.world_size = ngpus_per_node * args.world_size
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
-        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
+        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args, config))
     else:
         # Simply call main_worker function
-        main_worker(args.gpu, ngpus_per_node, args)
+        main_worker(args.gpu, ngpus_per_node, args, config)
 
 
-def main_worker(gpu, ngpus_per_node, args):
+def main_worker(gpu, ngpus_per_node, args, config):
     args.gpu = gpu
 
     # suppress printing if not first GPU on each node
@@ -166,10 +164,14 @@ def main_worker(gpu, ngpus_per_node, args):
         torch.distributed.barrier()
     # create model
     print("=> creating model '{}'".format(args.arch))
-    if args.arch.startswith('dlinear'):
-        model = dlinear(args.seq_len, args.pred_len, individual=args.individual, 
-                        enc_in=len(TICKERS), 
-                        quantile=args.criterion.lower()=="quantile")
+    if args.arch.startswith('diffuse'):
+        model = DiffuSE(
+            config.DILATION_CYCLE_LENGTH,
+            config.N_MELS,
+            config.NOISE_SCHEDULE,
+            config.RESIDUAL_CHANNELS,
+            config.RESIDUAL_LAYERS,
+            )
 
     # infer learning rate before changing batch size
     args.lr = args.lr * args.batch_size / 256
@@ -190,12 +192,13 @@ def main_worker(gpu, ngpus_per_node, args):
             # ourselves based on the total number of GPUs we have
             args.batch_size = int(args.batch_size / args.world_size)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu],
+            find_unused_parameters=True)
         else:
             model.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all
             # available GPUs if device_ids are not set
-            model = torch.nn.parallel.DistributedDataParallel(model)
+            model = torch.nn.parallel.DistributedDataParallel(model, find_unused_parameters=True)
     elif args.gpu is not None:
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
@@ -207,7 +210,7 @@ def main_worker(gpu, ngpus_per_node, args):
     print(model) # print model after SyncBatchNorm
 
     optimizer = build_optimizer(args, model)
-    
+
     scaler = torch.cuda.amp.GradScaler()
 
     best_loss = 1e8
@@ -232,28 +235,16 @@ def main_worker(gpu, ngpus_per_node, args):
             print("=> no checkpoint found at '{}'".format(args.resume))
 
     cudnn.benchmark = True
-    
-    logger = create_logger(output_dir=args.save, dist_rank=args.rank, name=f"{args.arch}")
-    # Data loading code
-    traindir = args.data
-    df = pd.read_csv(traindir)
-    # col_names = {
-    #     'tic_wise': ['close'] + INDICATORS,
-    #     'date_wise': list(df_index.columns[2:]) + \
-    #         ['day', 'holiday', 'month', 'day_of_month', 'turbulence']
-    #         }
 
-    col_names = {'tic_wise': [],
-                  'date_wise': []}
-    valid_dates = ['2023-01-01', '2023-03-01']
-    train_df = df[(df.date >= '2005-04-01') & (df.date < valid_dates[0])]
-    valid_df_start_time_idx = df[df.date >= valid_dates[0]].iloc[0]['time_idx']-args.seq_len
-    valid_df = df[(df.time_idx >= valid_df_start_time_idx) & (df.date<valid_dates[1])]
-    
-    train_dataset = CustomTimeSeriesDataset(train_df, col_names, args.seq_len, 
-                                            args.pred_len, target_type=args.target)
-    valid_dataset = CustomTimeSeriesDataset(valid_df, col_names, args.seq_len, 
-                                            args.pred_len, target_type=args.target)
+    logger = create_logger(output_dir=config.OUTPUT, dist_rank=args.rank, name=f"{args.arch}")
+
+    # Data loading code
+    train_dataset = VoicebankDataset(config.DATA.TRAIN_CLEAN_DIR,
+                                     config.DATA.TRAIN_NOISY_DIR,
+                                     config.DATA.NPY_DIR, se=True, voicebank=True)
+    valid_dataset = VoicebankDataset(config.DATA.TRAIN_CLEAN_DIR,
+                                     config.DATA.TRAIN_NOISY_DIR,
+                                     config.DATA.NPY_DIR, se=True, voicebank=True)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -261,7 +252,7 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         train_sampler = None
         valid_sampler = None
-        
+
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=False)
@@ -270,7 +261,7 @@ def main_worker(gpu, ngpus_per_node, args):
         num_workers=args.workers, pin_memory=True, sampler=valid_sampler, drop_last=False)
 
     criterion = build_criterion(args.criterion).cuda(args.gpu)
-    
+
     lr_scheduler = CosineLRScheduler(
                 optimizer,
                 t_initial=len(train_loader)*args.epochs//4,
@@ -281,26 +272,26 @@ def main_worker(gpu, ngpus_per_node, args):
                 cycle_limit=4,
                 t_in_epochs=True,
             )
-    
+
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
             valid_sampler.set_epoch(epoch)
 
         # train & validate for one epoch
-        train_loss = train(train_loader, model, criterion, optimizer, lr_scheduler, 
-                           scaler, logger, epoch, args)
-        valid_loss = validate(valid_loader, model, criterion, scaler, logger, epoch, args)
-        
-        if not args.multiprocessing_distributed or (args.multiprocessing_distributed
+        train_loss = train(train_loader, model, criterion, optimizer, lr_scheduler,
+                           scaler, logger, epoch, args, config)
+        valid_loss = validate(valid_loader, model, criterion, scaler, logger, epoch, args, config)
+
+        if not args.multiprocessing_distributed or (args.multiprocessing_distributed \
                 and args.rank == 0): # only the first GPU saves checkpoint
-        
+
             if valid_loss <= best_loss:
                 best_loss = valid_loss
                 is_best = True
             else:
                 is_best = False
-                
+
             save_checkpoint({
                 'epoch': epoch + 1,
                 'arch': args.arch,
@@ -308,14 +299,13 @@ def main_worker(gpu, ngpus_per_node, args):
                 'optimizer' : optimizer.state_dict(),
                 'scaler': scaler.state_dict(),
                 'best_loss': best_loss,
-            }, args, is_best=is_best, filename='checkpoint.pth.tar')
+            }, config.OUTPUT, is_best=is_best, filename='checkpoint.pth.tar')
             logger.info('=> saving checkpoint: checkpoint.pth.tar')
-            
-            
+
+
         msg = 'Train Loss: {:.3f}\t Validation Loss: {:.3f}'.format(
                     train_loss, valid_loss)
         logger.info(msg)
-        
+
 if __name__ == '__main__':
     main()
-    
