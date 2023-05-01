@@ -7,7 +7,6 @@ Created on Tue Apr 18 16:35:30 2023
 """
 
 import torch.nn as nn
-from pytorch_forecasting.metrics.quantile import QuantileLoss
 
 def build_criterion(criterion_type):
     if criterion_type.lower() == "mae" or criterion_type.lower() == "l1":
@@ -16,10 +15,7 @@ def build_criterion(criterion_type):
     elif criterion_type.lower() == "mse" or criterion_type.lower() == "l2":
         print('Criterion: MSE Loss')
         criterion  = nn.MSELoss()
-    elif criterion_type.lower() == "quantile":
-        print('Criterion: Quantile Loss')
-        criterion = QuantileLoss()
     else:
         print("Invalid criterion!")
-    
+
     return criterion

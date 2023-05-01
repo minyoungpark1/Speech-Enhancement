@@ -11,7 +11,6 @@ import builtins
 import os
 import random
 import warnings
-import pandas as pd
 
 import torch
 import torch.nn.parallel
