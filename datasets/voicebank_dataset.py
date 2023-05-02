@@ -65,7 +65,7 @@ class VoicebankDataset(torch.utils.data.Dataset):
     
     def random_cropping(self, signal, noisy_signal, spectrogram):
         start = random.randint(0, spectrogram.shape[1] - self.crop_frames)
-        end = start + self.crop_mel_frames
+        end = start + self.crop_frames
         spectrogram = spectrogram[:, start:end]
       
         start *= self.samples_per_frame
