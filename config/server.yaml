@@ -1,6 +1,6 @@
 DATA:
-  TRAIN_CLEAN_DIR: '../data/DS_10283_2791/clean_trainset_56spk_wav'
-  TRAIN_NOISY_DIR: '../data/DS_10283_2791/noisy_trainset_56spk_wav'
+  TRAIN_CLEAN_DIR: '../data/DS_10283_2791/clean_trainset_28spk_wav'
+  TRAIN_NOISY_DIR: '../data/DS_10283_2791/noisy_trainset_28spk_wav'
   TEST_CLEAN_DIR: '../data/DS_10283_2791/clean_testset_wav'
   TEST_NOISY_DIR: '../data/DS_10283_2791/noisy_testset_wav'
   NPY_DIR: '../data/npy_data'
