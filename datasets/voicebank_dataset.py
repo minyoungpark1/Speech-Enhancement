@@ -32,7 +32,7 @@ class VoicebankDataset(torch.utils.data.Dataset):
         for path in npy_paths:
             self.specnames += glob(f'{path}/*.wav.spec.npy', recursive=True)
         self.samples_per_frame = samples_per_frame
-        self.crop_mel_frames = crop_mel_frames
+        self.crop_frames = crop_frames
             
     def __len__(self):
         return len(self.specnames)
@@ -64,7 +64,7 @@ class VoicebankDataset(torch.utils.data.Dataset):
         #     }
     
     def random_cropping(self, signal, noisy_signal, spectrogram):
-        start = random.randint(0, spectrogram.shape[1] - self.crop_mel_frames)
+        start = random.randint(0, spectrogram.shape[1] - self.crop_frames)
         end = start + self.crop_mel_frames
         spectrogram = spectrogram[:, start:end]
       
