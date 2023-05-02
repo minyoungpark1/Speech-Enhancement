@@ -11,7 +11,7 @@ import random
 import torch
 import librosa
 from pathlib import PureWindowsPath, PurePosixPath, Path
-
+import posixpath
 from tqdm import tqdm
 from glob import glob
 from torch.utils.data.distributed import DistributedSampler
@@ -27,8 +27,10 @@ class VoicebankDataset(torch.utils.data.Dataset):
         self.specnames = []
         self.se = se
         self.voicebank = voicebank
-        npy_paths = [os.path.join(npy_dir, os.path.basename(wav_path)),
-                     os.path.join(npy_dir, os.path.basename(noisy_path))]
+        npy_paths = [
+            # os.path.join(npy_dir, os.path.basename(wav_path)),
+            os.path.join(npy_dir, os.path.basename(noisy_path))
+            ]
         for path in npy_paths:
             self.specnames += glob(f'{path}/*.wav.spec.npy', recursive=True)
         self.samples_per_frame = samples_per_frame
@@ -40,7 +42,9 @@ class VoicebankDataset(torch.utils.data.Dataset):
     def _get_data(self, idx):
         spec_filename = self.specnames[idx]
         if isinstance(Path(spec_filename), PureWindowsPath):
-            spec_filename = str(PurePosixPath(spec_filename))
+            # spec_filename = str(PurePosixPath(spec_filename))
+            spec_filename = spec_filename.replace(os.sep, posixpath.sep)
+            # print(spec_filename)
         if self.voicebank:
             spec_path = "/".join(spec_filename.split("/")[:-1])
             audio_filename = spec_filename.replace(spec_path, self.wav_path).replace(".spec.npy", "")

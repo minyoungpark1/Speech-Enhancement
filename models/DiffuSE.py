@@ -70,10 +70,12 @@ class DiffusionEmbedding(nn.Module):
 
 
 class SpectrogramUpsampler(nn.Module):
-    def __init__(self, n_mels):
+    def __init__(self, hop_length):
         super().__init__()
-        self.conv1 = ConvTranspose2d(1, 1, [3, 32], stride=[1, 16], padding=[1, 8])
-        self.conv2 = ConvTranspose2d(1, 1,  [3, 32], stride=[1, 16], padding=[1, 8])
+        L = int(np.sqrt(hop_length))
+        assert L**2 == 100, "Hop length must be a squre number"
+        self.conv1 = ConvTranspose2d(1, 1, [3, 2*L], stride=[1, L], padding=[1, L//2])
+        self.conv2 = ConvTranspose2d(1, 1,  [3, 2*L], stride=[1, L], padding=[1, L//2])
 
     def forward(self, x):
         x = torch.unsqueeze(x, 1)
@@ -86,11 +88,11 @@ class SpectrogramUpsampler(nn.Module):
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, n_mels, residual_channels, dilation):
+    def __init__(self, n_specs, residual_channels, dilation):
         super().__init__()
         self.dilated_conv = Conv1d(residual_channels, 2 * residual_channels, 3, padding=dilation, dilation=dilation)
         self.diffusion_projection = Linear(512, residual_channels)
-        self.conditioner_projection = Conv1d(n_mels, 2 * residual_channels, 1)
+        self.conditioner_projection = Conv1d(n_specs, 2 * residual_channels, 1)
         # self.output_projection = Conv1d(residual_channels, 2 * residual_channels, 1)
         self.output_projection = Conv1d(residual_channels, residual_channels, 1)
         self.output_residual = Conv1d(residual_channels, residual_channels, 1)
@@ -116,7 +118,8 @@ class ResidualBlock(nn.Module):
 class DiffuSE(nn.Module):
     def __init__(self, 
                  dilation_cycle_length,
-                 n_mels,
+                 hop_length,
+                 n_specs,
                  noise_schedule,
                  residual_channels,
                  residual_layers,
@@ -124,9 +127,9 @@ class DiffuSE(nn.Module):
         super().__init__()
         self.input_projection = Conv1d(1, residual_channels, 1)
         self.diffusion_embedding = DiffusionEmbedding(len(noise_schedule))
-        self.spectrogram_upsampler = SpectrogramUpsampler(n_mels)
+        self.spectrogram_upsampler = SpectrogramUpsampler(hop_length)
         self.residual_layers = nn.ModuleList([
-            ResidualBlock(n_mels, residual_channels, 2**(i % dilation_cycle_length))
+            ResidualBlock(n_specs, residual_channels, 2**(i % dilation_cycle_length))
             for i in range(residual_layers)
         ])
         self.skip_projection = Conv1d(residual_channels, residual_channels, 1)

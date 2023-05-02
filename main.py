@@ -168,6 +168,7 @@ def main_worker(gpu, ngpus_per_node, args, config):
     if args.arch.startswith('diffuse'):
         model = DiffuSE(
             config.DILATION_CYCLE_LENGTH,
+            config.HOP_SAMPLES,
             config.N_SPECS,
             config.NOISE_SCHEDULE,
             config.RESIDUAL_CHANNELS,
