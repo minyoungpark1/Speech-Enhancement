@@ -168,7 +168,7 @@ def main_worker(gpu, ngpus_per_node, args, config):
     if args.arch.startswith('diffuse'):
         model = DiffuSE(
             config.DILATION_CYCLE_LENGTH,
-            config.N_MELS,
+            config.N_SPECS,
             config.NOISE_SCHEDULE,
             config.RESIDUAL_CHANNELS,
             config.RESIDUAL_LAYERS,
@@ -242,10 +242,16 @@ def main_worker(gpu, ngpus_per_node, args, config):
     # Data loading code
     train_dataset = VoicebankDataset(config.DATA.TRAIN_CLEAN_DIR,
                                      config.DATA.TRAIN_NOISY_DIR,
-                                     config.DATA.NPY_DIR, se=True, voicebank=True)
+                                     config.DATA.NPY_DIR, 
+                                     se=True, voicebank=True,
+                                     samples_per_frame=config.HOP_SAMPLES,
+                                     crop_frames=config.CROP_FRAMES)
     valid_dataset = VoicebankDataset(config.DATA.TRAIN_CLEAN_DIR,
                                      config.DATA.TRAIN_NOISY_DIR,
-                                     config.DATA.NPY_DIR, se=True, voicebank=True)
+                                     config.DATA.NPY_DIR, 
+                                     se=True, voicebank=True,
+                                     samples_per_frame=config.HOP_SAMPLES,
+                                     crop_frames=config.CROP_FRAMES)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)

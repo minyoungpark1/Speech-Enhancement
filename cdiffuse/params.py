@@ -33,6 +33,11 @@ class AttrDict(dict):
 
 
 params = AttrDict(
+    # Training params
+    batch_size=16,
+    learning_rate=2e-4,
+    max_grad_norm=None,
+
     # Data params
     sample_rate=16000,
     #n_mels set to the npy size
@@ -41,7 +46,7 @@ params = AttrDict(
     n_fft=400,
     hop_samples=100,
     # frame number at once
-    crop_mel_frames=62,  
+    crop_mel_frames=160,  
 
     # Model params
     residual_layers=30,

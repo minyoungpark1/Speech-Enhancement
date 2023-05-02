@@ -19,7 +19,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 class VoicebankDataset(torch.utils.data.Dataset):
     def __init__(self, wav_path, noisy_path, npy_dir, se, voicebank=False,
-                 samples_per_frame=256, crop_mel_frames=62
+                 samples_per_frame=100, crop_frames=160
                  ):
         super().__init__()
         self.wav_path = wav_path

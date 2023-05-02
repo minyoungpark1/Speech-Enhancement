@@ -26,7 +26,7 @@ from concurrent.futures import ProcessPoolExecutor
 from glob import glob
 from tqdm import tqdm
 
-from .params import params
+from params import params
 
 random.seed(23)
 
