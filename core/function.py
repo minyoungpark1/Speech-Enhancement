@@ -363,6 +363,7 @@ def train_cmgan(train_loader, model, discriminator, optimizer, optimizer_disc,
 
         if args.max_norm != 0.0:
             scaler.unscale_(optimizer)
+            scaler.unscale_(optimizer_disc)
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
             torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.max_norm)
 
@@ -373,28 +374,27 @@ def train_cmgan(train_loader, model, discriminator, optimizer, optimizer_disc,
         clean_audio_list = list(clean.cpu().numpy()[:, :length])
         pesq_score = batch_pesq(clean_audio_list, est_audio_list)
         
-        with torch.cuda.amp.autocast(True):
             # The calculation of PESQ can be None due to silent part
-            if pesq_score is not None:
-                optimizer_disc.zero_grad()
+        if pesq_score is not None:
+            with torch.cuda.amp.autocast(True):
                 predict_enhance_metric = discriminator(clean_mag, est_mag.detach())
                 predict_max_metric = discriminator(clean_mag, clean_mag)
                 L_E = F.mse_loss(predict_enhance_metric.flatten(), pesq_score)
                 discrim_loss_metric = F.mse_loss(predict_max_metric.flatten(), one_labels) + L_E
-            else:
-                discrim_loss_metric = torch.tensor([0.])
-        
-        if pesq_score is not None:
+                
             optimizer_disc.zero_grad()
             scaler.scale(discrim_loss_metric).backward()
     
             if args.max_norm != 0.0:
                 scaler.unscale_(optimizer)
+                scaler.unscale_(optimizer_disc)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
                 torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.max_norm)
     
             scaler.step(optimizer_disc)
             scaler.update()
+        else:
+            discrim_loss_metric = torch.tensor([0.])
             
         gen_losses.update(loss.item(), clean.size(0))
         disc_losses.update(discrim_loss_metric.item(), clean.size(0))
