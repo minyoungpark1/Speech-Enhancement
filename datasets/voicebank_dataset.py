@@ -19,7 +19,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 class VoicebankDataset(torch.utils.data.Dataset):
     def __init__(self, wav_path, noisy_path, npy_dir, se, voicebank=False,
-                 samples_per_frame=100, crop_frames=160
+                 samples_per_frame=100, crop_frames=160, get_spec=True
                  ):
         super().__init__()
         self.wav_path = wav_path
@@ -27,6 +27,7 @@ class VoicebankDataset(torch.utils.data.Dataset):
         self.specnames = []
         self.se = se
         self.voicebank = voicebank
+        self.get_spec = get_spec
         npy_paths = [
             # os.path.join(npy_dir, os.path.basename(wav_path)),
             os.path.join(npy_dir, os.path.basename(noisy_path))
@@ -58,29 +59,40 @@ class VoicebankDataset(torch.utils.data.Dataset):
             
         signal, _ = librosa.load(audio_filename, sr=16000)
         noisy_signal, _ = librosa.load(noisy_filename, sr=16000)  
-
-        spectrogram = np.load(spec_filename)
-        return signal, noisy_signal, spectrogram
-        # return {
-        #     'audio': signal,
-        #     'noisy': noisy_signal,
-        #     'spectrogram': spectrogram.T
-        #     }
+        
+        if self.get_spec:
+            spectrogram = np.load(spec_filename)
+            return signal, noisy_signal, spectrogram
+        else:
+            return signal, noisy_signal, None
     
-    def random_cropping(self, signal, noisy_signal, spectrogram):
-        start = random.randint(0, spectrogram.shape[1] - self.crop_frames)
-        end = start + self.crop_frames
-        spectrogram = spectrogram[:, start:end]
-      
-        start *= self.samples_per_frame
-        end *= self.samples_per_frame
-        signal = signal[start:end]
-        signal = np.pad(signal, (0, (end-start) - len(signal)), 
-                                 mode='constant')
-        noisy_signal = noisy_signal[start:end]
-        noisy_signal = np.pad(noisy_signal, (0, (end-start) - len(noisy_signal)), 
-                              mode='constant')
-        return signal, noisy_signal, spectrogram
+    def random_cropping(self, signal, noisy_signal, spectrogram=None):
+        if spectrogram:
+            start = random.randint(0, spectrogram.shape[1] - self.crop_frames)
+            end = start + self.crop_frames
+            spectrogram = spectrogram[:, start:end]
+          
+            start *= self.samples_per_frame
+            end *= self.samples_per_frame
+            signal = signal[start:end]
+            signal = np.pad(signal, (0, (end-start) - len(signal)), 
+                                     mode='constant')
+            noisy_signal = noisy_signal[start:end]
+            noisy_signal = np.pad(noisy_signal, (0, (end-start) - len(noisy_signal)), 
+                                  mode='constant')
+            return signal, noisy_signal, spectrogram
+        else:
+            L = self.crop_frames*self.samples_per_frame
+            start = random.randint(0, len(signal) - L)
+            end = start + L
+            signal = signal[start:end]
+            signal = np.pad(signal, (0, (end-start) - len(signal)), 
+                                     mode='constant')
+            noisy_signal = noisy_signal[start:end]
+            noisy_signal = np.pad(noisy_signal, (0, (end-start) - len(noisy_signal)), 
+                                  mode='constant')
+            return signal, noisy_signal, None
+            
         
     def __getitem__(self, idx):
         signal, noisy_signal, spectrogram = self._get_data(idx)
@@ -88,9 +100,12 @@ class VoicebankDataset(torch.utils.data.Dataset):
                                                                 noisy_signal, 
                                                                 spectrogram)
         
-        return torch.tensor(signal),\
-            torch.tensor(noisy_signal),\
-            torch.tensor(spectrogram)
+        if self.get_spec:
+            return torch.tensor(signal),\
+                torch.tensor(noisy_signal),\
+                torch.tensor(spectrogram)
+        else:
+            return torch.tensor(signal), torch.tensor(noisy_signal)
     
 
 # class Collator:

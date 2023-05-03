@@ -1,6 +1,7 @@
 from models.conformer import ConformerBlock
-from utils import *
-
+# from utils import *
+import torch.nn as nn
+import torch
 
 class DilatedDenseNet(nn.Module):
     def __init__(self, depth=4, in_channels=64):

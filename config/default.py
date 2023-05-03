@@ -27,6 +27,8 @@ _C.DILATION_CYCLE_LENGTH = 10
 _C.NOISE_SCHEDULE = np.linspace(1e-4, 0.035, 50).tolist()
 _C.INFERENCE_NOISE_SCHEDULE = [0.0001, 0.001, 0.01, 0.05, 0.2, 0.35]
 
+_C.LOSS_WEIGHTS = [0.1, 0.9, 0.2, 0.05]
+
 # Dataset settings
 # -----------------------------------------------------------------------------
 _C.DATA = CN()

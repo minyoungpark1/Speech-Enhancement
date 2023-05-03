@@ -12,7 +12,7 @@ from torch import optim
 from torch.optim import Optimizer
 
 
-def build_optimizer(args, model):
+def build_optimizer(args, model, lr=None):
     """
     Build optimizer, set weight decay of normalization to 0 by default.
     """
@@ -27,16 +27,19 @@ def build_optimizer(args, model):
     opt_lower = args.optimizer.lower()
     optimizer = None
 
+    if not lr:
+        lr = args.lr
+        
     if opt_lower == 'sgd':
         optimizer = optim.SGD(parameters, momentum=args.momentum,
-                              nesterov=True, lr=args.lr)
+                              nesterov=True, lr=lr)
     elif opt_lower == 'adamw':
-        optimizer = optim.AdamW(parameters, lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = optim.AdamW(parameters, lr=lr, weight_decay=args.weight_decay)
     elif opt_lower == 'lars':
-        optimizer = LARS(parameters, args.lr, weight_decay=args.weight_decay,
+        optimizer = LARS(parameters, lr, weight_decay=args.weight_decay,
                          momentum=args.momentum)
     elif opt_lower == 'lamb':
-        optimizer = Lamb(parameters, lr=args.lr, weight_decay=args.weight_decay,
+        optimizer = Lamb(parameters, lr=lr, weight_decay=args.weight_decay,
         max_grad_norm=args.max_norm)
 
     return optimizer
