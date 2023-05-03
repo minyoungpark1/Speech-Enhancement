@@ -425,19 +425,6 @@ def validate_cmgan(valid_loader, model, discriminator, scaler, logger,
     for idx, batch in enumerate(valid_loader):
         clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
             one_labels, hamming_window = batch_stft(batch, args, config)
-            
-        c = torch.sqrt(noisy.size(-1) / torch.sum((noisy ** 2.0), dim=-1))
-        noisy, clean = torch.transpose(noisy, 0, 1), torch.transpose(clean, 0, 1)
-        noisy, clean = torch.transpose(noisy * c, 0, 1), torch.transpose(clean * c, 0, 1)
-    
-        noisy_spec = torch.view_as_real(torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES, 
-                                window=hamming_window, onesided=True, return_complex=True))
-        clean_spec = torch.view_as_real(torch.stft(clean, config.N_FFT, config.HOP_SAMPLES, 
-                                window=hamming_window, onesided=True, return_complex=True))
-        noisy_spec = power_compress(noisy_spec).permute(0, 1, 3, 2)
-        clean_spec = power_compress(clean_spec)
-        clean_real = clean_spec[:, 0, :, :].unsqueeze(1)
-        clean_imag = clean_spec[:, 1, :, :].unsqueeze(1)
     
         est_real, est_imag = model(noisy_spec)
         est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
@@ -635,19 +622,6 @@ def validate_cmgan(valid_loader, model, discriminator, scaler, logger,
 #             clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
 #                 one_labels, hamming_window = batch_stft(batch, args, config)
                 
-#             c = torch.sqrt(noisy.size(-1) / torch.sum((noisy ** 2.0), dim=-1))
-#             noisy, clean = torch.transpose(noisy, 0, 1), torch.transpose(clean, 0, 1)
-#             noisy, clean = torch.transpose(noisy * c, 0, 1), torch.transpose(clean * c, 0, 1)
-        
-#             noisy_spec = torch.view_as_real(torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES, 
-#                                     window=hamming_window, onesided=True, return_complex=True))
-#             clean_spec = torch.view_as_real(torch.stft(clean, config.N_FFT, config.HOP_SAMPLES, 
-#                                     window=hamming_window, onesided=True, return_complex=True))
-#             noisy_spec = power_compress(noisy_spec).permute(0, 1, 3, 2)
-#             clean_spec = power_compress(clean_spec)
-#             clean_real = clean_spec[:, 0, :, :].unsqueeze(1)
-#             clean_imag = clean_spec[:, 1, :, :].unsqueeze(1)
-        
 #             est_real, est_imag = model(noisy_spec)
 #             est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
 #             est_mag = torch.sqrt(est_real ** 2 + est_imag ** 2)
