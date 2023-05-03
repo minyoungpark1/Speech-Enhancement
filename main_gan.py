@@ -213,6 +213,8 @@ def main_worker(gpu, ngpus_per_node, args, config):
     # optimizer = torch.optim.AdamW(self.model.parameters(), lr=args.init_lr)
     #     self.optimizer_disc = torch.optim.AdamW(self.discriminator.parameters(), lr=2*args.init_lr)
 
+    scaler = torch.cuda.amp.GradScaler()
+    
     best_loss = 1e8
     # optionally resume from a checkpoint
     if args.resume:
@@ -229,6 +231,7 @@ def main_worker(gpu, ngpus_per_node, args, config):
             discriminator.load_state_dict(checkpoint['disc_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             optimizer_disc.load_state_dict(checkpoint['optimizer_disc'])
+            scaler.load_state_dict(checkpoint['scaler'])
             best_loss = checkpoint['best_loss']
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
@@ -300,10 +303,10 @@ def main_worker(gpu, ngpus_per_node, args, config):
                                                       model, discriminator, 
                                                       optimizer, optimizer_disc, 
                                                       lr_scheduler_G, lr_scheduler_D,
-                                                      logger, epoch,  args, config)
+                                                      scaler, logger, epoch,  args, config)
         valid_gen_loss, valid_disc_loss = validate_cmgan(valid_loader,
                                                          model, discriminator, 
-                                                         logger, epoch, args, config)
+                                                         scaler, logger, epoch, args, config)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed \
                 and args.rank == 0): # only the first GPU saves checkpoint
@@ -321,6 +324,7 @@ def main_worker(gpu, ngpus_per_node, args, config):
                 'disc_state_dict': discriminator.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'optimizer_disc': optimizer_disc.state_dict(),
+                'scaler': scaler.state_dict(),
                 'best_loss': best_loss,
             }, config.OUTPUT, is_best=is_best, filename='checkpoint.pth.tar')
             logger.info('=> saving checkpoint: checkpoint.pth.tar')
