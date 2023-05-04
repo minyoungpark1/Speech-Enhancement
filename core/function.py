@@ -699,7 +699,7 @@ def validate_cmgan(valid_loader, model, discriminator, criterion, logger,
 def batch_stft(batch, args, config):
     clean = batch['audio']
     noisy = batch['noisy']
-    one_labels = torch.ones(args.batch_size)
+    one_labels = torch.ones(len(clean))
     hamming_window = torch.hamming_window(config.N_FFT)
     
     if args.gpu is not None:
