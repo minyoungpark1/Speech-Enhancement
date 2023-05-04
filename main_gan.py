@@ -24,11 +24,14 @@ from timm.scheduler.cosine_lr import CosineLRScheduler
 from config import get_config
 from models.generator import TSCNet
 from models.discriminator import Discriminator
-from datasets.voicebank_dataset import VoicebankDataset
+from datasets.voicebank_dataset import VoicebankDataset, Collator
 from core.function import train_cmgan, validate_cmgan
 from core.criterion import build_criterion
 from core.optimizer import build_optimizer
 from utils.utils import create_logger, save_checkpoint
+
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+os.environ['NCCL_BLOCKING_WAIT'] = "1"
 
 model_names = ['diffuse', 'scp-gan', 'cmgan'
                ]
@@ -66,8 +69,8 @@ def parse_option():
                         metavar='LR', help='initial (base) learning rate', dest='lr')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                         help='momentum')
-    parser.add_argument('--wd', '--weight-decay', default=1e-6, type=float,
-                        metavar='W', help='weight decay (default: 1e-6)',
+    parser.add_argument('--wd', '--weight-decay', default=0.01, type=float,
+                        metavar='W', help='weight decay (default: 0.01)',
                         dest='weight_decay')
     parser.add_argument('--max-norm', default=0.0, type=float, metavar='M',
                         help='maximum normalization threshold of the gradients')
@@ -100,48 +103,21 @@ def parse_option():
                         help='criterion used (default: l1)')
 
     args, unparsed = parser.parse_known_args()
+    # args = parser.parse_args(
+    #     ['--arch','cmgan', '--tag','no_parallel_pesq', '--output','results/',  '--workers','20', '--epochs','2', 
+    #     '--batch-size','2', '--lr','0.01', '--cfg','config/windows.yaml', '--optimizer','adamw', 
+    #     '--world-size','1', '--gpu','1']
+    #     )
     config = get_config(args)
 
     return args, config
 
 
-def main():
-    args, config = parse_option()
-
-    if args.seed is not None:
-        random.seed(args.seed)
-        torch.manual_seed(args.seed)
-        cudnn.deterministic = True
-        warnings.warn('You have chosen to seed training. '
-                      'This will turn on the CUDNN deterministic setting, '
-                      'which can slow down your training considerably! '
-                      'You may see unexpected behavior when restarting '
-                      'from checkpoints.')
-
-    if args.gpu is not None:
-        warnings.warn('You have chosen a specific GPU. This will completely '
-                      'disable data parallelism.')
-
-    if args.dist_url == "env://" and args.world_size == -1:
-        args.world_size = int(os.environ["WORLD_SIZE"])
-
-    args.distributed = args.world_size > 1 or args.multiprocessing_distributed
-
-    ngpus_per_node = torch.cuda.device_count()
-    if args.multiprocessing_distributed:
-        # Since we have ngpus_per_node processes per node, the total world_size
-        # needs to be adjusted accordingly
-        args.world_size = ngpus_per_node * args.world_size
-        # Use torch.multiprocessing.spawn to launch distributed processes: the
-        # main_worker process function
-        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args, config))
-    else:
-        # Simply call main_worker function
-        main_worker(args.gpu, ngpus_per_node, args, config)
-
-
 def main_worker(gpu, ngpus_per_node, args, config):
     args.gpu = gpu
+    
+    if args.gpu is not None:
+        print("Use GPU: {} for training".format(args.gpu))
 
     # suppress printing if not first GPU on each node
     if args.multiprocessing_distributed and (args.gpu != 0 or args.rank != 0):
@@ -173,8 +149,8 @@ def main_worker(gpu, ngpus_per_node, args, config):
         print('using CPU, this will be slow')
     elif args.distributed:
         # apply SyncBN
-        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-        discriminator = torch.nn.SyncBatchNorm.convert_sync_batchnorm(discriminator)
+        # model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        # discriminator = torch.nn.SyncBatchNorm.convert_sync_batchnorm(discriminator)
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
@@ -188,32 +164,38 @@ def main_worker(gpu, ngpus_per_node, args, config):
             args.batch_size = int(args.batch_size / args.world_size)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = torch.nn.parallel.DistributedDataParallel(model, 
-                                                              device_ids=[args.gpu])
+                                                              device_ids=[args.gpu],
+                                                              find_unused_parameters=True)
             discriminator = torch.nn.parallel.DistributedDataParallel(discriminator,
-                                                                      device_ids=[args.gpu])
+                                                                      device_ids=[args.gpu],
+                                                                      find_unused_parameters=True)
         else:
             model.cuda()
             discriminator.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all
             # available GPUs if device_ids are not set
-            model = torch.nn.parallel.DistributedDataParallel(model)
-            discriminator = torch.nn.parallel.DistributedDataParallel(discriminator)
+            model = torch.nn.parallel.DistributedDataParallel(model,
+            find_unused_parameters=True)
+            discriminator = torch.nn.parallel.DistributedDataParallel(discriminator,
+            find_unused_parameters=True)
     elif args.gpu is not None:
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
         discriminator = discriminator.cuda(args.gpu)
         # comment out the following line for debugging
-        raise NotImplementedError("Only DistributedDataParallel is supported.")
+        # raise NotImplementedError("Only DistributedDataParallel is supported.")
     else:
-        # AllGather/rank implementation in this code only supports DistributedDataParallel.
-        raise NotImplementedError("Only DistributedDataParallel is supported.")
+        # DataParallel will divide and allocate batch_size to all available GPUs
+        model = torch.nn.DataParallel(model).cuda()
+        discriminator = torch.nn.DataParallel(discriminator).cuda()
 
+    criterion = torch.nn.MSELoss().cuda(args.gpu)
     optimizer = build_optimizer(args, model)
     optimizer_disc = build_optimizer(args, discriminator, lr=args.lr*2)
     # optimizer = torch.optim.AdamW(self.model.parameters(), lr=args.init_lr)
     #     self.optimizer_disc = torch.optim.AdamW(self.discriminator.parameters(), lr=2*args.init_lr)
 
-    scaler = torch.cuda.amp.GradScaler()
+    # scaler = torch.cuda.amp.GradScaler()
     
     best_loss = 1e8
     # optionally resume from a checkpoint
@@ -231,7 +213,7 @@ def main_worker(gpu, ngpus_per_node, args, config):
             discriminator.load_state_dict(checkpoint['disc_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             optimizer_disc.load_state_dict(checkpoint['optimizer_disc'])
-            scaler.load_state_dict(checkpoint['scaler'])
+            # scaler.load_state_dict(checkpoint['scaler'])
             best_loss = checkpoint['best_loss']
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
@@ -249,28 +231,30 @@ def main_worker(gpu, ngpus_per_node, args, config):
                                      se=True, voicebank=True,
                                      samples_per_frame=config.HOP_SAMPLES,
                                      crop_frames=config.CROP_FRAMES,
-                                     get_spec=False)
+                                     get_spec=False, random_crop=False)
     valid_dataset = VoicebankDataset(config.DATA.TRAIN_CLEAN_DIR,
                                      config.DATA.TRAIN_NOISY_DIR,
                                      config.DATA.NPY_DIR, 
                                      se=True, voicebank=True,
                                      samples_per_frame=config.HOP_SAMPLES,
                                      crop_frames=config.CROP_FRAMES,
-                                     get_spec=False)
+                                     get_spec=False, random_crop=False)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-        valid_sampler = torch.utils.data.distributed.DistributedSampler(valid_dataset)
     else:
         train_sampler = None
-        valid_sampler = None
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=False)
+        num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True,
+        collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
+                            crop_frames=config.CROP_FRAMES, get_spec=False).collate,)
     valid_loader = torch.utils.data.DataLoader(
-        valid_dataset, batch_size=args.batch_size*2, shuffle=(valid_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=valid_sampler, drop_last=False)
+        valid_dataset, batch_size=args.batch_size, shuffle=False,
+        num_workers=args.workers, pin_memory=True, drop_last=False,
+        collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
+                            crop_frames=config.CROP_FRAMES, get_spec=False).collate,)
 
     lr_scheduler_G = CosineLRScheduler(
                 optimizer,
@@ -296,17 +280,16 @@ def main_worker(gpu, ngpus_per_node, args, config):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
-            valid_sampler.set_epoch(epoch)
 
         # train & validate for one epoch
         train_gen_loss, train_disc_loss = train_cmgan(train_loader, 
-                                                      model, discriminator, 
+                                                      model, discriminator, criterion,
                                                       optimizer, optimizer_disc, 
                                                       lr_scheduler_G, lr_scheduler_D,
-                                                      scaler, logger, epoch,  args, config)
+                                                      logger, epoch,  args, config)
         valid_gen_loss, valid_disc_loss = validate_cmgan(valid_loader,
-                                                         model, discriminator, 
-                                                         scaler, logger, epoch, args, config)
+                                                         model, discriminator, criterion,
+                                                         logger, epoch, args, config)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed \
                 and args.rank == 0): # only the first GPU saves checkpoint
@@ -324,7 +307,7 @@ def main_worker(gpu, ngpus_per_node, args, config):
                 'disc_state_dict': discriminator.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'optimizer_disc': optimizer_disc.state_dict(),
-                'scaler': scaler.state_dict(),
+                # 'scaler': scaler.state_dict(),
                 'best_loss': best_loss,
             }, config.OUTPUT, is_best=is_best, filename='checkpoint.pth.tar')
             logger.info('=> saving checkpoint: checkpoint.pth.tar')
@@ -334,6 +317,40 @@ def main_worker(gpu, ngpus_per_node, args, config):
         f'Validation Generator Loss: {valid_gen_loss:.3f}\t'\
         f'Validation Discriminator Loss: {valid_disc_loss:.3f}\t'
         logger.info(msg)
+
+def main():
+    args, config = parse_option()
+    
+    if args.seed is not None:
+        random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        cudnn.deterministic = True
+        warnings.warn('You have chosen to seed training. '
+                      'This will turn on the CUDNN deterministic setting, '
+                      'which can slow down your training considerably! '
+                      'You may see unexpected behavior when restarting '
+                      'from checkpoints.')
+    
+    if args.gpu is not None:
+        warnings.warn('You have chosen a specific GPU. This will completely '
+                      'disable data parallelism.')
+        
+    if args.dist_url == "env://" and args.world_size == -1:
+        args.world_size = int(os.environ["WORLD_SIZE"])
+    
+    args.distributed = args.world_size > 1 or args.multiprocessing_distributed
+    
+    ngpus_per_node = torch.cuda.device_count()
+    if args.multiprocessing_distributed:
+        # Since we have ngpus_per_node processes per node, the total world_size
+        # needs to be adjusted accordingly
+        args.world_size = ngpus_per_node * args.world_size
+        # Use torch.multiprocessing.spawn to launch distributed processes: the
+        # main_worker process function
+        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args, config))
+    else:
+        # Simply call main_worker function
+        main_worker(args.gpu, ngpus_per_node, args, config)
 
 if __name__ == '__main__':
     main()

@@ -12,6 +12,7 @@ import numpy as np
 import datetime
 from timm.utils import AverageMeter
 import torch.nn.functional as F
+import torch.distributed as dist
 
 from models.discriminator import batch_pesq
 from utils.utils import ProgressMeter
@@ -29,7 +30,7 @@ def add_noise(audio, noisy, noise_schedule):
 
     beta = np.array(noise_schedule)
     noise_level = np.cumprod(1 - beta)
-    noise_level = torch.tensor(noise_level.astype(np.float32)).to(device)
+    noise_level = torch.tensor(noise_level.astype(np.float32)).cuda(device)
     t = torch.randint(0, len(noise_schedule), [N], device=audio.device)
     noise_scale = noise_level[t].unsqueeze(1)
     noise_scale_sqrt = noise_scale**0.5
@@ -69,9 +70,9 @@ def train(train_loader, model, criterion, optimizer, lr_scheduler, scaler,
         learning_rates.update(optimizer.param_groups[0]['lr'])
 
         if args.gpu is not None:
-            signal = signal.to(args.gpu, non_blocking=True).float()
-            noisy_signal = noisy_signal.to(args.gpu, non_blocking=True).float()
-            spectrogram = spectrogram.to(args.gpu, non_blocking=True).float()
+            signal = signal.cuda(args.gpu, non_blocking=True).float()
+            noisy_signal = noisy_signal.cuda(args.gpu, non_blocking=True).float()
+            spectrogram = spectrogram.cuda(args.gpu, non_blocking=True).float()
 
         # compute output
         with torch.cuda.amp.autocast(True):
@@ -135,9 +136,9 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
     # with torch.no_grad():
     for idx, (signal, noisy_signal, spectrogram) in enumerate(valid_loader):
         if args.gpu is not None:
-            signal = signal.to(args.gpu, non_blocking=True).float()
-            noisy_signal = noisy_signal.to(args.gpu, non_blocking=True).float()
-            spectrogram = spectrogram.to(args.gpu, non_blocking=True).float()
+            signal = signal.cuda(args.gpu, non_blocking=True).float()
+            noisy_signal = noisy_signal.cuda(args.gpu, non_blocking=True).float()
+            spectrogram = spectrogram.cuda(args.gpu, non_blocking=True).float()
 
         # compute output
         with torch.cuda.amp.autocast(True):
@@ -305,8 +306,8 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
 #     return losses.avg
 
 
-def train_cmgan(train_loader, model, discriminator, optimizer, optimizer_disc, 
-              lr_scheduler_G, lr_scheduler_D, scaler, logger, epoch, args, config):
+def train_cmgan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
+              lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -320,19 +321,24 @@ def train_cmgan(train_loader, model, discriminator, optimizer, optimizer_disc,
         prefix="Epoch: [{}]".format(epoch))
 
     model.train()
-
+    discriminator.train()
+    
     start = time.time()
     end = time.time()
     iters_per_epoch = len(train_loader)
 
     for idx, batch in enumerate(train_loader):
+        optimizer.zero_grad()
+        optimizer_disc.zero_grad()
+        # print("start")
         # measure data loading time
         data_time.update(time.time() - end)
+        
         lr_scheduler_G.step(epoch*iters_per_epoch+idx)
         lr_scheduler_D.step(epoch*iters_per_epoch+idx)
         learning_rates.update(optimizer.param_groups[0]['lr'])
     
-        clean, noisy, clean_spec, noisy_spec,  clean_real, clean_imag, \
+        clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
             one_labels, hamming_window= batch_stft(batch, args, config)
             
         est_real, est_imag = model(noisy_spec)
@@ -341,43 +347,51 @@ def train_cmgan(train_loader, model, discriminator, optimizer, optimizer_disc,
         clean_mag = torch.sqrt(clean_real**2 + clean_imag**2)
         
         predict_fake_metric = discriminator(clean_mag, est_mag)
-        gen_loss_GAN = F.mse_loss(predict_fake_metric.flatten(), one_labels.float())
+        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
+        # gen_loss_GAN = F.mse_loss(predict_fake_metric.flatten(), one_labels.float())
         
-        loss_ri = F.mse_loss(est_real, clean_real) + F.mse_loss(est_imag, clean_imag)
+        loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
+        # loss_ri = F.mse_loss(est_real, clean_real) + F.mse_loss(est_imag, clean_imag)
         
         est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
         est_audio = torch.istft(est_spec_uncompress, config.N_FFT, 
                                 config.HOP_SAMPLES, window=hamming_window, onesided=True)
         
-        loss_mag = F.mse_loss(est_mag, clean_mag)
+        loss_mag = criterion(est_mag, clean_mag)
+        # loss_mag = F.mse_loss(est_mag, clean_mag)
         time_loss = torch.mean(torch.abs(est_audio - clean))
         length = est_audio.size(-1)
         loss = config.LOSS_WEIGHTS[0] * loss_ri + \
             config.LOSS_WEIGHTS[1] * loss_mag + \
                 config.LOSS_WEIGHTS[2] * time_loss + \
                     config.LOSS_WEIGHTS[3] * gen_loss_GAN
-                        
-        optimizer.zero_grad()
+        
+        # optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
         est_audio_list = list(est_audio.detach().cpu().numpy())
-        clean_audio_list = list(clean.cpu().numpy()[:, :length])
-        pesq_score = batch_pesq(clean_audio_list, est_audio_list)
+        clean_audio_list = list(clean.detach().cpu().numpy()[:, :length])
+        pesq_score = batch_pesq(clean_audio_list, est_audio_list, args)
         
-            # The calculation of PESQ can be None due to silent part
+        # optimizer_disc.zero_grad()
+        # The calculation of PESQ can be None due to silent part
         if pesq_score is not None:
             predict_enhance_metric = discriminator(clean_mag, est_mag.detach())
             predict_max_metric = discriminator(clean_mag, clean_mag)
-            L_E = F.mse_loss(predict_enhance_metric.flatten(), pesq_score)
-            discrim_loss_metric = F.mse_loss(predict_max_metric.flatten(), one_labels) + L_E
+            L = criterion(predict_max_metric.flatten(), one_labels)
+            L_E = criterion(predict_enhance_metric.flatten(), pesq_score)
+            # L_E = F.mse_loss(predict_enhance_metric.flatten(), pesq_score)
+            discrim_loss_metric = L + L_E
+            # discrim_loss_metric = F.mse_loss(predict_max_metric.flatten(), one_labels) + L_E
                 
-            optimizer_disc.zero_grad()
             discrim_loss_metric.backward()
             optimizer_disc.step()
         else:
             discrim_loss_metric = torch.tensor([0.])
             
+        torch.cuda.synchronize()
+        
         gen_losses.update(loss.item(), clean.size(0))
         disc_losses.update(discrim_loss_metric.item(), clean.size(0))
 
@@ -406,7 +420,7 @@ def train_cmgan(train_loader, model, discriminator, optimizer, optimizer_disc,
     return gen_losses.avg, disc_losses.avg
 
 @torch.no_grad()
-def validate_cmgan(valid_loader, model, discriminator, scaler, logger,
+def validate_cmgan(valid_loader, model, discriminator, criterion, logger, 
                    epoch, args, config):
     batch_time = AverageMeter()
     gen_losses = AverageMeter()
@@ -432,10 +446,13 @@ def validate_cmgan(valid_loader, model, discriminator, scaler, logger,
         clean_mag = torch.sqrt(clean_real ** 2 + clean_imag ** 2)
     
         predict_fake_metric = discriminator(clean_mag, est_mag)
-        gen_loss_GAN = F.mse_loss(predict_fake_metric.flatten(), one_labels.float())
+        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
+        # gen_loss_GAN = F.mse_loss(predict_fake_metric.flatten(), one_labels.float())
     
-        loss_mag = F.mse_loss(est_mag, clean_mag)
-        loss_ri = F.mse_loss(est_real, clean_real) + F.mse_loss(est_imag, clean_imag)
+        loss_mag = criterion(est_mag, clean_mag)
+        # loss_mag = F.mse_loss(est_mag, clean_mag)
+        loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
+        # loss_ri = F.mse_loss(est_real, clean_real) + F.mse_loss(est_imag, clean_imag)
     
         est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
         est_audio = torch.istft(est_spec_uncompress, config.N_FFT, config.HOP_SAMPLES, 
@@ -451,7 +468,7 @@ def validate_cmgan(valid_loader, model, discriminator, scaler, logger,
     
         est_audio_list = list(est_audio.detach().cpu().numpy())
         clean_audio_list = list(clean.cpu().numpy()[:, :length])
-        pesq_score = batch_pesq(clean_audio_list, est_audio_list)
+        pesq_score = batch_pesq(clean_audio_list, est_audio_list, args)
         if pesq_score is not None:
             predict_enhance_metric = discriminator(clean_mag, est_mag.detach())
             predict_max_metric = discriminator(clean_mag, clean_mag)
@@ -460,6 +477,8 @@ def validate_cmgan(valid_loader, model, discriminator, scaler, logger,
         else:
             discrim_loss_metric = torch.tensor([0.])
     
+        torch.cuda.synchronize()
+        
         gen_losses.update(loss.item(), clean.size(0))
         disc_losses.update(discrim_loss_metric.item(), clean.size(0))
 
@@ -678,16 +697,16 @@ def validate_cmgan(valid_loader, model, discriminator, scaler, logger,
 
 
 def batch_stft(batch, args, config):
-    clean = batch[0]
-    noisy = batch[1]
+    clean = batch['audio']
+    noisy = batch['noisy']
     one_labels = torch.ones(args.batch_size)
     hamming_window = torch.hamming_window(config.N_FFT)
     
     if args.gpu is not None:
-        clean = clean.to(args.gpu, non_blocking=True)
-        noisy = noisy.to(args.gpu, non_blocking=True)
-        one_labels = one_labels.to(args.gpu, non_blocking=True)
-        hamming_window = hamming_window.to(args.gpu, non_blocking=True)
+        clean = clean.cuda(args.gpu, non_blocking=True)
+        noisy = noisy.cuda(args.gpu, non_blocking=True)
+        one_labels = one_labels.cuda(args.gpu, non_blocking=True)
+        hamming_window = hamming_window.cuda(args.gpu, non_blocking=True)
         
     # Normalization
     c = torch.sqrt(noisy.size(-1) / torch.sum((noisy ** 2.0), dim=-1))

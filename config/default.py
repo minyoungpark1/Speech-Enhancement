@@ -32,8 +32,8 @@ _C.LOSS_WEIGHTS = [0.1, 0.9, 0.2, 0.05]
 # Dataset settings
 # -----------------------------------------------------------------------------
 _C.DATA = CN()
-_C.DATA.TRAIN_CLEAN_DIR =  'D:/data/DS_10283_2791/clean_trainset_56spk_wav'
-_C.DATA.TRAIN_NOISY_DIR = 'D:/data/DS_10283_2791/noisy_trainset_56spk_wav'
+_C.DATA.TRAIN_CLEAN_DIR =  'D:/data/DS_10283_2791/clean_trainset_28spk_wav'
+_C.DATA.TRAIN_NOISY_DIR = 'D:/data/DS_10283_2791/noisy_trainset_28spk_wav'
 _C.DATA.TEST_CLEAN_DIR =  'D:/data/DS_10283_2791/clean_testset_wav'
 _C.DATA.TEST_NOISY_DIR = 'D:/data/DS_10283_2791/noisy_testset_wav'
 _C.DATA.NPY_DIR = 'D:/data/npy_data'
@@ -93,6 +93,8 @@ def update_config(config, args):
         config.MODEL.RESUME = args.resume
     if _check_args('output'):
         config.OUTPUT = args.output
+    if _check_args('tag'):
+        config.TAG = args.tag
 
     ## Overwrite optimizer if not None, currently we use it for [fused_adam, fused_lamb]
     if _check_args('optim'):
