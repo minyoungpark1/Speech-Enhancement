@@ -232,8 +232,8 @@ def main_worker(gpu, ngpus_per_node, args, config):
                                      samples_per_frame=config.HOP_SAMPLES,
                                      crop_frames=config.CROP_FRAMES,
                                      get_spec=False, random_crop=False)
-    valid_dataset = VoicebankDataset(config.DATA.TRAIN_CLEAN_DIR,
-                                     config.DATA.TRAIN_NOISY_DIR,
+    valid_dataset = VoicebankDataset(config.DATA.TEST_CLEAN_DIR,
+                                     config.DATA.TEST_NOISY_DIR,
                                      config.DATA.NPY_DIR, 
                                      se=True, voicebank=True,
                                      samples_per_frame=config.HOP_SAMPLES,
@@ -242,8 +242,10 @@ def main_worker(gpu, ngpus_per_node, args, config):
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+        valid_sampler = torch.utils.data.distributed.DistributedSampler(valid_dataset)
     else:
         train_sampler = None
+        valid_sampler = None
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
@@ -252,7 +254,7 @@ def main_worker(gpu, ngpus_per_node, args, config):
                             crop_frames=config.CROP_FRAMES, get_spec=False).collate,)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True, drop_last=False,
+        num_workers=args.workers, pin_memory=True, sampler=valid_sampler, drop_last=False,
         collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
                             crop_frames=config.CROP_FRAMES, get_spec=False).collate,)
 
@@ -280,6 +282,7 @@ def main_worker(gpu, ngpus_per_node, args, config):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
+            valid_sampler.set_epoch(epoch)
 
         # train & validate for one epoch
         train_gen_loss, train_disc_loss = train_cmgan(train_loader, 
