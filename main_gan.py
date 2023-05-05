@@ -33,7 +33,7 @@ from utils.utils import create_logger, save_checkpoint
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 os.environ['NCCL_BLOCKING_WAIT'] = "1"
 
-model_names = ['diffuse', 'scp-gan', 'cmgan'
+model_names = ['scp-gan', 'cmgan'
                ]
 
 def parse_option():
@@ -42,7 +42,7 @@ def parse_option():
                         choices=model_names,
                         help='model architecture: ' +
                             ' | '.join(model_names) +
-                            ' (default: diffuse)')
+                            ' (default: cmgan)')
 
     parser.add_argument('--output', default='output', type=str, metavar='PATH',
                         help='root of output folder, the full path is <output>/<model_name>/<tag> (default: output)')
@@ -103,11 +103,7 @@ def parse_option():
                         help='criterion used (default: l1)')
 
     args, unparsed = parser.parse_known_args()
-    # args = parser.parse_args(
-    #     ['--arch','cmgan', '--tag','no_parallel_pesq', '--output','results/',  '--workers','20', '--epochs','2', 
-    #     '--batch-size','2', '--lr','0.01', '--cfg','config/windows.yaml', '--optimizer','adamw', 
-    #     '--world-size','1', '--gpu','1']
-    #     )
+    
     config = get_config(args)
 
     return args, config
@@ -149,8 +145,8 @@ def main_worker(gpu, ngpus_per_node, args, config):
         print('using CPU, this will be slow')
     elif args.distributed:
         # apply SyncBN
-        # model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-        # discriminator = torch.nn.SyncBatchNorm.convert_sync_batchnorm(discriminator)
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        discriminator = torch.nn.SyncBatchNorm.convert_sync_batchnorm(discriminator)
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
@@ -164,20 +160,16 @@ def main_worker(gpu, ngpus_per_node, args, config):
             args.batch_size = int(args.batch_size / args.world_size)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = torch.nn.parallel.DistributedDataParallel(model, 
-                                                              device_ids=[args.gpu],
-                                                              find_unused_parameters=True)
+                                                              device_ids=[args.gpu])
             discriminator = torch.nn.parallel.DistributedDataParallel(discriminator,
-                                                                      device_ids=[args.gpu],
-                                                                      find_unused_parameters=True)
+                                                                      device_ids=[args.gpu])
         else:
             model.cuda()
             discriminator.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all
             # available GPUs if device_ids are not set
-            model = torch.nn.parallel.DistributedDataParallel(model,
-            find_unused_parameters=True)
-            discriminator = torch.nn.parallel.DistributedDataParallel(discriminator,
-            find_unused_parameters=True)
+            model = torch.nn.parallel.DistributedDataParallel(model)
+            discriminator = torch.nn.parallel.DistributedDataParallel(discriminator)
     elif args.gpu is not None:
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
