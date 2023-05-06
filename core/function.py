@@ -9,6 +9,7 @@ Created on Tue Mar 28 15:58:51 2023
 import time
 import torch
 import numpy as np
+import librosa
 import datetime
 from timm.utils import AverageMeter
 import torch.nn.functional as F
@@ -63,7 +64,11 @@ def train(train_loader, model, criterion, optimizer, lr_scheduler, scaler,
     end = time.time()
     iters_per_epoch = len(train_loader)
 
-    for idx, (signal, noisy_signal, spectrogram) in enumerate(train_loader):
+    for idx, batch in enumerate(train_loader):
+        signal = batch['audio']
+        noisy_signal = batch['noisy']
+        spectrogram = batch['spectrogram']
+        
         # measure data loading time
         data_time.update(time.time() - end)
         lr_scheduler.step(epoch*iters_per_epoch+idx)
@@ -134,7 +139,11 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
     end = time.time()
 
     # with torch.no_grad():
-    for idx, (signal, noisy_signal, spectrogram) in enumerate(valid_loader):
+    for idx, batch in enumerate(valid_loader):
+        signal = batch['audio']
+        noisy_signal = batch['noisy']
+        spectrogram = batch['spectrogram']
+        
         if args.gpu is not None:
             signal = signal.cuda(args.gpu, non_blocking=True).float()
             noisy_signal = noisy_signal.cuda(args.gpu, non_blocking=True).float()
@@ -759,4 +768,3 @@ def compute_angle(x1, x2):
 
 
 # def compute_self_correcting_weights():
-    

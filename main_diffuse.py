@@ -24,13 +24,13 @@ from timm.scheduler.cosine_lr import CosineLRScheduler
 
 from config import get_config
 from models.DiffuSE import DiffuSE
-from datasets.voicebank_dataset import VoicebankDataset
+from datasets.voicebank_dataset import VoicebankDataset, Collator
 from core.function import train, validate
 from core.criterion import build_criterion
 from core.optimizer import build_optimizer
 from utils.utils import create_logger, save_checkpoint
 
-model_names = ['diffuse', 'scp-gan',
+model_names = ['diffuse', 
                ]
 
 def parse_option():
@@ -66,7 +66,7 @@ def parse_option():
                         metavar='LR', help='initial (base) learning rate', dest='lr')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                         help='momentum')
-    parser.add_argument('--wd', '--weight-decay', default=1e-6, type=float,
+    parser.add_argument('--wd', '--weight-decay', default=0.01, type=float,
                         metavar='W', help='weight decay (default: 1e-6)',
                         dest='weight_decay')
     parser.add_argument('--max-norm', default=0.0, type=float, metavar='M',
@@ -246,13 +246,15 @@ def main_worker(gpu, ngpus_per_node, args, config):
                                      config.DATA.NPY_DIR, 
                                      se=True, voicebank=True,
                                      samples_per_frame=config.HOP_SAMPLES,
-                                     crop_frames=config.CROP_FRAMES)
+                                     crop_frames=config.CROP_FRAMES,
+                                     get_spec=True, random_crop=False)
     valid_dataset = VoicebankDataset(config.DATA.TRAIN_CLEAN_DIR,
                                      config.DATA.TRAIN_NOISY_DIR,
                                      config.DATA.NPY_DIR, 
                                      se=True, voicebank=True,
                                      samples_per_frame=config.HOP_SAMPLES,
-                                     crop_frames=config.CROP_FRAMES)
+                                     crop_frames=config.CROP_FRAMES,
+                                     get_spec=True, random_crop=False)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -263,10 +265,12 @@ def main_worker(gpu, ngpus_per_node, args, config):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=False)
+        num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=False, collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
+                            crop_frames=config.CROP_FRAMES).collate,)
     valid_loader = torch.utils.data.DataLoader(
-        valid_dataset, batch_size=args.batch_size*2, shuffle=(valid_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=valid_sampler, drop_last=False)
+        valid_dataset, batch_size=args.batch_size, shuffle=(valid_sampler is None),
+        num_workers=args.workers, pin_memory=True, sampler=valid_sampler, drop_last=False, collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
+                            crop_frames=config.CROP_FRAMES).collate,)
 
     criterion = build_criterion(args.criterion).cuda(args.gpu)
 

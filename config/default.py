@@ -96,12 +96,13 @@ def update_config(config, args):
     if _check_args('tag'):
         config.TAG = args.tag
 
-    ## Overwrite optimizer if not None, currently we use it for [fused_adam, fused_lamb]
+    ## Overwrite optimizer if not None
     if _check_args('optim'):
         config.TRAIN.OPTIMIZER.NAME = args.optim
 
     # set local rank for distributed training
-    config.RANK = args.rank
+    if _check_args('rank'):
+        config.RANK = args.rank
 
     # output folder
     config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
