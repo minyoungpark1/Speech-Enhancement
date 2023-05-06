@@ -133,12 +133,19 @@ def main():
         torchaudio.save(output_name, torch.tensor(audio).unsqueeze(0), sample_rate=16000)
         
     metrics_avg = metrics_total / num
-    print('pesq: ', metrics_avg[0], 'csig: ', metrics_avg[1], 'cbak: ', metrics_avg[2], 'covl: ',
-          metrics_avg[3], 'ssnr: ', metrics_avg[4], 'stoi: ', metrics_avg[5])
+    print(f'pesq: {metrics_avg[0]:.3f}\t '\
+          f'csig: {metrics_avg[1]:.3f}\t '\
+          f'cbak: {metrics_avg[2]:.3f}\t '\
+          f'covl: {metrics_avg[3]:.3f}\t '\
+          f'ssnr: {metrics_avg[4]:.3f}\t '\
+          f'stoi: {metrics_avg[5]:.3f}')
 
 
 if __name__ == '__main__':
     main()
 
-# Baseline
+# CDifuSE
 # pesq: 2.205      csig: 3.634     cbak: 2.891     covl: 2.953     ssnr: 4.250     stoi: 0.901
+
+# CMGAN
+# pesq: 3.231      csig: 4.522     cbak: 3.804     covl: 3.958     ssnr: 10.34     stoi: 0.953
