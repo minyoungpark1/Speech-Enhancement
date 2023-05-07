@@ -180,140 +180,144 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
     # return losses.avg, accuracies.avg
 
 # TODO Merge train/valid functions of  GAN models in the future
-# def train_scpgan(train_loader, model, discriminator, optimizer, optimizer_disc, 
-#               lr_scheduler, scaler, logger, epoch, args, config):
+def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
+              lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
 
-#     batch_time = AverageMeter()
-#     data_time = AverageMeter()
-#     learning_rates = AverageMeter()
-#     losses = AverageMeter()
-#     losses = AverageMeter()
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    learning_rates = AverageMeter()
+    gen_losses = AverageMeter()
+    disc_losses = AverageMeter()
 
-#     progress = ProgressMeter(
-#         len(train_loader),
-#         [batch_time, data_time, losses],
-#         prefix="Epoch: [{}]".format(epoch))
+    progress = ProgressMeter(
+        len(train_loader),
+        [batch_time, data_time, gen_losses, disc_losses],
+        prefix="Epoch: [{}]".format(epoch))
 
-#     model.train()
+    model.train()
+    discriminator.train()
+    
+    start = time.time()
+    end = time.time()
+    iters_per_epoch = len(train_loader)
 
-#     start = time.time()
-#     end = time.time()
-#     iters_per_epoch = len(train_loader)
-
-#     for idx, batch in enumerate(train_loader):
-#         # measure data loading time
-#         data_time.update(time.time() - end)
-#         lr_scheduler.step(epoch*iters_per_epoch+idx)
-#         learning_rates.update(optimizer.param_groups[0]['lr'])
-#         optimizer.zero_grad()
+    for idx, batch in enumerate(train_loader):
+        optimizer.zero_grad()
+        optimizer_disc.zero_grad()
         
-#         clean, clean_spec, noisy_spec, \
-#         clean_real, clean_imag, one_labels, hamming_window= batch_stft(batch, args, config)
-            
-#         # compute output
-#         with torch.cuda.amp.autocast(True):
-#             est_real, est_imag = model(noisy_spec)
-#             est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
-#             est_mag = torch.sqrt(est_real**2 + est_imag**2)
-#             clean_mag = torch.sqrt(clean_real**2 + clean_imag**2)
-            
-#             predict_fake_metric = discriminator(clean_mag, est_mag)
-#             gen_loss_GAN = F.mse_loss(predict_fake_metric.flatten(), one_labels.float())
-            
-#             loss_ri = F.mse_loss(est_real, clean_real) + F.mse_loss(est_imag, clean_imag)
-            
-#             est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
-            
-            
-#             ################### Consistency Presering Network #################
-#             # Enhanced audio pipeline
-#             est_audio = torch.istft(est_spec_uncompress, config.N_FFT, 
-#                                     config.HOP_SAMPLES, window=hamming_window, onesided=True)
-#             est_spec_prime = torch.stft(est_audio, config.n_fft, config.hop, 
-#                                     window=hamming_window,
-#                                     onesided=True, return_complex=True)
-#             est_spec_prime_real = est_spec_prime[:, 0, :, :].unsqueeze(1)
-#             est_spec_prime_imag = est_spec_prime[:, 1, :, :].unsqueeze(1)
-#             est_mag_prime = torch.sqrt(est_spec_prime_real**2 + est_spec_prime_imag**2)
-            
-#             # Clean* audio pipeline
-#             clean_spec_uncompress = power_uncompress(clean_real, clean_imag).squeeze(1)
-#             clean_audio_prime = torch.istft(clean_spec_uncompress, config.N_FFT, 
-#                                     config.HOP_SAMPLES, window=hamming_window, onesided=True)
-#             clean_audio_prime_spec = torch.stft(clean_audio_prime, config.n_fft, config.hop, 
-#                                     window=hamming_window,
-#                                     onesided=True, return_complex=True)
-#             clean_audio_prime_real = clean_audio_prime_spec[:, 0, :, :].unsqueeze(1)
-#             clean_audio_prime_imag = clean_audio_prime_spec[:, 1, :, :].unsqueeze(1)
-#             clean_audio_prime_mag = torch.sqrt(clean_audio_prime_real**2 +\
-#                                                clean_audio_prime_imag**2)
-            
-#             # loss_mag = F.mse_loss(est_mag, clean_mag)
-#             # time_loss = torch.mean(torch.abs(est_audio - clean))
-#             loss_mag = F.mse_loss(est_mag_prime, clean_audio_prime_mag)
-#             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
-#             length = est_audio.size(-1)
-#             loss = config.LOSS_WEIGHTS[0] * loss_ri + \
-#                 config.LOSS_WEIGHTS[1] * loss_mag + \
-#                     config.LOSS_WEIGHTS[2] * time_loss + \
-#                         config.LOSS_WEIGHTS[3] * gen_loss_GAN
-#             loss.backward()
-#             optimizer.step()
-            
-#             est_audio_list = list(est_audio.detach().cpu().numpy())
-#             clean_audio_list = list(clean.cpu().numpy()[:, :length])
-#             pesq_score = batch_pesq(clean_audio_list, est_audio_list)
-            
-#             # The calculation of PESQ can be None due to silent part
-#             if pesq_score is not None:
-#                 optimizer_disc.zero_grad()
-#                 predict_enhance_metric = discriminator(clean_mag, est_mag.detach())
-#                 predict_max_metric = discriminator(clean_mag, clean_mag)
-#                 L_E = F.mse_loss(predict_enhance_metric.flatten(), pesq_score)
-#                 discrim_loss_metric = F.mse_loss(predict_max_metric.flatten(), one_labels) + L_E
-                                      
-#                 discrim_loss_metric.backward()
-#                 optimizer_disc.step()
-#             else:
-#                 discrim_loss_metric = torch.tensor([0.])
+        # measure data loading time
+        data_time.update(time.time() - end)
         
-#         # loss.item(), discrim_loss_metric.item()
+        lr_scheduler_G.step(epoch*iters_per_epoch+idx)
+        lr_scheduler_D.step(epoch*iters_per_epoch+idx)
+        learning_rates.update(optimizer.param_groups[0]['lr'])
+    
+        clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
+            one_labels, hamming_window= batch_stft(batch, args, config)
+            
+        est_real, est_imag = model(noisy_spec)
+        est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
+        est_mag = torch.sqrt(est_real**2 + est_imag**2)
+        clean_mag = torch.sqrt(clean_real**2 + clean_imag**2)
         
-#         losses.update(loss.item(), signal.size(0))
+        predict_fake_metric = discriminator(clean_mag, est_mag)
+        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
+        loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
+        
+        est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
+            
+        if args.arch == 'scp-gan':
+            ################### Consistency Presering Network #################
+            # Enhanced audio pipeline
+            est_audio = torch.istft(est_spec_uncompress, config.N_FFT, 
+                                    config.HOP_SAMPLES, window=hamming_window, onesided=True)
+            est_prime_spec = torch.stft(est_audio, config.N_FFT, config.HOP_SAMPLES, 
+                                    window=hamming_window,
+                                    onesided=True, return_complex=True)
+            est_prime_mag = est_prime_spec.abs()
+            
+            # Clean* audio pipeline
+            clean_spec_uncompress = power_uncompress(clean_real, clean_imag).squeeze(1)
+            clean_audio_prime = torch.istft(clean_spec_uncompress, config.N_FFT, 
+                                    config.HOP_SAMPLES, window=hamming_window, 
+                                    onesided=True)
+            clean_audio_prime_spec = torch.stft(clean_audio_prime, config.N_FFT, 
+                                    config.HOP_SAMPLES, window=hamming_window,
+                                    onesided=True, return_complex=True)
+            clean_audio_prime_mag = clean_audio_prime_spec.abs()
+            
+            loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
+            time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
+        else:
+            loss_mag = criterion(est_mag, clean_mag)
+            time_loss = torch.mean(torch.abs(est_audio - clean))
+        
+        length = est_audio.size(-1)
+        loss = config.LOSS_WEIGHTS[0] * loss_ri + \
+            config.LOSS_WEIGHTS[1] * loss_mag + \
+                config.LOSS_WEIGHTS[2] * time_loss + \
+                    config.LOSS_WEIGHTS[3] * gen_loss_GAN
+                    
+        loss.backward()
+        optimizer.step()
+        
+        est_audio_list = list(est_audio.detach().cpu().numpy())
+        clean_audio_list = list(clean.cpu().numpy()[:, :length])
+        
+        D_Gx_y = discriminator(est_mag.detach(), clean_mag)
+        Q_Gx_y = batch_pesq(est_audio_list, clean_audio_list)
+        D_y_y = discriminator(clean_mag, clean_mag)
+        
+        L = criterion(D_y_y.flatten(), one_labels)
+        L_E = criterion(D_Gx_y.flatten(), Q_Gx_y)
+        
+        if args.arch == 'scp-gan':
+            Q_y_y = batch_pesq(clean_audio_list, clean_audio_list)
+            L_C = criterion(D_y_y.flatten(), Q_y_y)
+            
+            noisy_real, noisy_imag = noisy_spec.permute(0, 1, 3, 2), noisy_spec.permute(0, 1, 3, 2)
+            noisy_mag = torch.sqrt(noisy_real**2 + noisy_imag**2)
+            D_x_y = discriminator(noisy_mag, clean_mag)
+            
+            noisy_audio_list = list(noisy.cpu().numpy()[:, :length])
+            Q_x_y = batch_pesq(noisy_audio_list, clean_audio_list)
+            L_N = criterion(D_x_y.flatten(), Q_x_y)
+            
+            
+        else:
+            discrim_loss_metric = L + L_E
+                              
+        discrim_loss_metric.backward()
+        optimizer_disc.step()
+        
+        torch.cuda.synchronize()
+        
+        gen_losses.update(loss.item(), clean.size(0))
+        disc_losses.update(discrim_loss_metric.item(), clean.size(0))
 
-#         # compute gradient and do SGD step
-#         scaler.scale(loss).backward()
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
 
-#         if args.max_norm != 0.0:
-#             scaler.unscale_(optimizer)
-#             torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
+        if idx % args.print_freq == 0:
+            lr = optimizer.param_groups[0]['lr']
+            wd = optimizer.param_groups[0]['weight_decay']
+            memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
+            etas = batch_time.avg * (iters_per_epoch - idx)
+            logger.info(
+                f'Train: [{epoch}/{args.epochs}][{idx}/{iters_per_epoch}]\t'
+                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
+                f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
+                f'generator loss {gen_losses.val:.4f} ({gen_losses.avg:.4f})\t'
+                f'discriminator loss {disc_losses.val:.4f} ({disc_losses.avg:.4f})\t'
+                f'mem {memory_used:.0f}MB')
 
-#         scaler.step(optimizer)
-#         scaler.update()
+            progress.display(idx)
 
-#         # measure elapsed time
-#         batch_time.update(time.time() - end)
-#         end = time.time()
+    epoch_time = time.time() - start
+    logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
 
-#         if idx % args.print_freq == 0:
-#             lr = optimizer.param_groups[0]['lr']
-#             wd = optimizer.param_groups[0]['weight_decay']
-#             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
-#             etas = batch_time.avg * (iters_per_epoch - idx)
-#             logger.info(
-#                 f'Train: [{epoch}/{args.epochs}][{idx}/{iters_per_epoch}]\t'
-#                 f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
-#                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
-#                 f'loss {losses.val:.4f} ({losses.avg:.4f})\t'
-#                 f'mem {memory_used:.0f}MB')
-
-#             progress.display(idx)
-
-#     epoch_time = time.time() - start
-#     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
-
-#     return losses.avg
-
+    return gen_losses.avg, disc_losses.avg
 
 def train_cmgan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
               lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
@@ -339,7 +343,7 @@ def train_cmgan(train_loader, model, discriminator, criterion, optimizer, optimi
     for idx, batch in enumerate(train_loader):
         optimizer.zero_grad()
         optimizer_disc.zero_grad()
-        # print("start")
+        
         # measure data loading time
         data_time.update(time.time() - end)
         
@@ -357,25 +361,21 @@ def train_cmgan(train_loader, model, discriminator, criterion, optimizer, optimi
         
         predict_fake_metric = discriminator(clean_mag, est_mag)
         gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
-        # gen_loss_GAN = F.mse_loss(predict_fake_metric.flatten(), one_labels.float())
-        
         loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
-        # loss_ri = F.mse_loss(est_real, clean_real) + F.mse_loss(est_imag, clean_imag)
         
         est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
         est_audio = torch.istft(est_spec_uncompress, config.N_FFT, 
                                 config.HOP_SAMPLES, window=hamming_window, onesided=True)
         
         loss_mag = criterion(est_mag, clean_mag)
-        # loss_mag = F.mse_loss(est_mag, clean_mag)
         time_loss = torch.mean(torch.abs(est_audio - clean))
+        
         length = est_audio.size(-1)
         loss = config.LOSS_WEIGHTS[0] * loss_ri + \
             config.LOSS_WEIGHTS[1] * loss_mag + \
                 config.LOSS_WEIGHTS[2] * time_loss + \
                     config.LOSS_WEIGHTS[3] * gen_loss_GAN
         
-        # optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         
@@ -383,16 +383,13 @@ def train_cmgan(train_loader, model, discriminator, criterion, optimizer, optimi
         clean_audio_list = list(clean.detach().cpu().numpy()[:, :length])
         pesq_score = batch_pesq(clean_audio_list, est_audio_list, args)
         
-        # optimizer_disc.zero_grad()
         # The calculation of PESQ can be None due to silent part
         if pesq_score is not None:
             predict_enhance_metric = discriminator(clean_mag, est_mag.detach())
             predict_max_metric = discriminator(clean_mag, clean_mag)
             L = criterion(predict_max_metric.flatten(), one_labels)
             L_E = criterion(predict_enhance_metric.flatten(), pesq_score)
-            # L_E = F.mse_loss(predict_enhance_metric.flatten(), pesq_score)
             discrim_loss_metric = L + L_E
-            # discrim_loss_metric = F.mse_loss(predict_max_metric.flatten(), one_labels) + L_E
                 
             discrim_loss_metric.backward()
             optimizer_disc.step()
@@ -509,202 +506,6 @@ def validate_cmgan(valid_loader, model, discriminator, criterion, logger,
     return gen_losses.avg, disc_losses.avg
 
 
-
-# def train_cmgan(train_loader, model, discriminator, optimizer, optimizer_disc, 
-#               lr_scheduler_G, lr_scheduler_D, scaler, logger, epoch, args, config):
-
-#     batch_time = AverageMeter()
-#     data_time = AverageMeter()
-#     learning_rates = AverageMeter()
-#     gen_losses = AverageMeter()
-#     disc_losses = AverageMeter()
-
-#     progress = ProgressMeter(
-#         len(train_loader),
-#         [batch_time, data_time, gen_losses, disc_losses],
-#         prefix="Epoch: [{}]".format(epoch))
-
-#     model.train()
-
-#     start = time.time()
-#     end = time.time()
-#     iters_per_epoch = len(train_loader)
-
-#     for idx, batch in enumerate(train_loader):
-#         # measure data loading time
-#         data_time.update(time.time() - end)
-#         lr_scheduler_G.step(epoch*iters_per_epoch+idx)
-#         lr_scheduler_D.step(epoch*iters_per_epoch+idx)
-#         learning_rates.update(optimizer.param_groups[0]['lr'])
-        
-#         with torch.cuda.amp.autocast(True):
-#             clean, noisy, clean_spec, noisy_spec,  clean_real, clean_imag, \
-#                 one_labels, hamming_window= batch_stft(batch, args, config)
-                
-#             est_real, est_imag = model(noisy_spec)
-#             est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
-#             est_mag = torch.sqrt(est_real**2 + est_imag**2)
-#             clean_mag = torch.sqrt(clean_real**2 + clean_imag**2)
-            
-#             predict_fake_metric = discriminator(clean_mag, est_mag)
-#             gen_loss_GAN = F.mse_loss(predict_fake_metric.flatten(), one_labels.float())
-            
-#             loss_ri = F.mse_loss(est_real, clean_real) + F.mse_loss(est_imag, clean_imag)
-            
-#             est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
-#             est_audio = torch.istft(est_spec_uncompress, config.N_FFT, 
-#                                     config.HOP_SAMPLES, window=hamming_window, onesided=True)
-            
-#             loss_mag = F.mse_loss(est_mag, clean_mag)
-#             time_loss = torch.mean(torch.abs(est_audio - clean))
-#             length = est_audio.size(-1)
-#             loss = config.LOSS_WEIGHTS[0] * loss_ri + \
-#                 config.LOSS_WEIGHTS[1] * loss_mag + \
-#                     config.LOSS_WEIGHTS[2] * time_loss + \
-#                         config.LOSS_WEIGHTS[3] * gen_loss_GAN
-                        
-#         optimizer.zero_grad()
-#         scaler.scale(loss).backward()
-
-#         if args.max_norm != 0.0:
-#             scaler.unscale_(optimizer)
-#             scaler.unscale_(optimizer_disc)
-#             torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
-#             torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.max_norm)
-
-#         scaler.step(optimizer)
-#         scaler.update()
-        
-#         est_audio_list = list(est_audio.detach().cpu().numpy())
-#         clean_audio_list = list(clean.cpu().numpy()[:, :length])
-#         pesq_score = batch_pesq(clean_audio_list, est_audio_list)
-        
-#             # The calculation of PESQ can be None due to silent part
-#         if pesq_score is not None:
-#             with torch.cuda.amp.autocast(True):
-#                 predict_enhance_metric = discriminator(clean_mag, est_mag.detach())
-#                 predict_max_metric = discriminator(clean_mag, clean_mag)
-#                 L_E = F.mse_loss(predict_enhance_metric.flatten(), pesq_score)
-#                 discrim_loss_metric = F.mse_loss(predict_max_metric.flatten(), one_labels) + L_E
-                
-#             optimizer_disc.zero_grad()
-#             scaler.scale(discrim_loss_metric).backward()
-    
-#             if args.max_norm != 0.0:
-#                 scaler.unscale_(optimizer)
-#                 scaler.unscale_(optimizer_disc)
-#                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
-#                 torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.max_norm)
-    
-#             scaler.step(optimizer_disc)
-#             scaler.update()
-#         else:
-#             discrim_loss_metric = torch.tensor([0.])
-            
-#         gen_losses.update(loss.item(), clean.size(0))
-#         disc_losses.update(discrim_loss_metric.item(), clean.size(0))
-
-#         # measure elapsed time
-#         batch_time.update(time.time() - end)
-#         end = time.time()
-
-#         if idx % args.print_freq == 0:
-#             lr = optimizer.param_groups[0]['lr']
-#             wd = optimizer.param_groups[0]['weight_decay']
-#             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
-#             etas = batch_time.avg * (iters_per_epoch - idx)
-#             logger.info(
-#                 f'Train: [{epoch}/{args.epochs}][{idx}/{iters_per_epoch}]\t'
-#                 f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
-#                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
-#                 f'generator loss {gen_losses.val:.4f} ({gen_losses.avg:.4f})\t'
-#                 f'discriminator loss {disc_losses.val:.4f} ({disc_losses.avg:.4f})\t'
-#                 f'mem {memory_used:.0f}MB')
-
-#             progress.display(idx)
-
-#     epoch_time = time.time() - start
-#     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
-
-#     return gen_losses.avg, disc_losses.avg
-
-# @torch.no_grad()
-# def validate_cmgan(valid_loader, model, discriminator, scaler, logger,
-#                    epoch, args, config):
-#     batch_time = AverageMeter()
-#     gen_losses = AverageMeter()
-#     disc_losses = AverageMeter()
-#     # accuracies = AverageMeter()
-#     model.eval()
-#     discriminator.eval()
-#     end = time.time()
-
-#     progress = ProgressMeter(
-#             len(valid_loader),
-#             [batch_time, gen_losses, disc_losses],
-#             # [batch_time, losses, accuracies],
-#             prefix='Test: ')
-
-#     for idx, batch in enumerate(valid_loader):
-#         with torch.cuda.amp.autocast(True):
-#             clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
-#                 one_labels, hamming_window = batch_stft(batch, args, config)
-                
-#             est_real, est_imag = model(noisy_spec)
-#             est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
-#             est_mag = torch.sqrt(est_real ** 2 + est_imag ** 2)
-#             clean_mag = torch.sqrt(clean_real ** 2 + clean_imag ** 2)
-        
-#             predict_fake_metric = discriminator(clean_mag, est_mag)
-#             gen_loss_GAN = F.mse_loss(predict_fake_metric.flatten(), one_labels.float())
-        
-#             loss_mag = F.mse_loss(est_mag, clean_mag)
-#             loss_ri = F.mse_loss(est_real, clean_real) + F.mse_loss(est_imag, clean_imag)
-        
-#             est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
-#             est_audio = torch.istft(est_spec_uncompress, config.N_FFT, config.HOP_SAMPLES, 
-#                                     window=hamming_window, onesided=True)
-        
-#             time_loss = torch.mean(torch.abs(est_audio - clean))
-#             length = est_audio.size(-1)
-            
-#             loss = config.LOSS_WEIGHTS[0] * loss_ri + \
-#                 config.LOSS_WEIGHTS[1] * loss_mag + \
-#                     config.LOSS_WEIGHTS[2] * time_loss + \
-#                         config.LOSS_WEIGHTS[3] * gen_loss_GAN
-        
-#             est_audio_list = list(est_audio.detach().cpu().numpy())
-#             clean_audio_list = list(clean.cpu().numpy()[:, :length])
-#             pesq_score = batch_pesq(clean_audio_list, est_audio_list)
-#             if pesq_score is not None:
-#                 predict_enhance_metric = discriminator(clean_mag, est_mag.detach())
-#                 predict_max_metric = discriminator(clean_mag, clean_mag)
-#                 discrim_loss_metric = F.mse_loss(predict_max_metric.flatten(), one_labels) + \
-#                                       F.mse_loss(predict_enhance_metric.flatten(), pesq_score)
-#             else:
-#                 discrim_loss_metric = torch.tensor([0.])
-    
-#         gen_losses.update(loss.item(), clean.size(0))
-#         disc_losses.update(discrim_loss_metric.item(), clean.size(0))
-
-#         # measure elapsed time
-#         batch_time.update(time.time() - end)
-#         end = time.time()
-
-#         if idx % args.print_freq == 0:
-#             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
-#             logger.info(
-#                 f'Test: [{idx}/{len(valid_loader)}]\t'
-#                 f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-#                 f'generator loss {gen_losses.val:.4f} ({gen_losses.avg:.4f})\t'
-#                 f'discriminator loss {disc_losses.val:.4f} ({disc_losses.avg:.4f})\t'
-#                 f'Mem {memory_used:.0f}MB')
-
-#             progress.display(idx)
-            
-#     return gen_losses.avg, disc_losses.avg
-
-
 def batch_stft(batch, args, config):
     clean = batch['audio']
     noisy = batch['noisy']
@@ -766,5 +567,100 @@ def compute_angle(x1, x2):
     
     return angle
 
+def compute_self_correcting_weight_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):
+    # resetting gradient back to zero
+    optimizer_disc.zero_grad()
 
-# def compute_self_correcting_weights():
+    L_C.backward()
+    
+    grad_C_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
+    grad_C_list = torch.cat([grad.reshape(-1) for grad in grad_C_tensor], dim=0)
+    
+    # resetting gradient back to zero
+    optimizer_disc.zero_grad()
+
+    L_E.backward(retain_graph=True)
+    # tensor with real gradients
+    grad_E_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
+    grad_E_list = torch.cat([grad.reshape(-1) for grad in grad_E_tensor], dim=0)
+    EdotE = torch.dot(grad_E_list, grad_E_list).item() + 1e-6 # 1e-4 added to avoid division by zero
+    E_norm = np.sqrt(EdotE)
+    
+    # resetting gradient back to zero
+    optimizer_disc.zero_grad()
+    L_N.backward(retain_graph=True)
+    # tensor with real gradients
+    grad_N_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
+    grad_N_list = torch.cat([grad.reshape(-1) for grad in grad_N_tensor], dim=0)
+    NdotN = torch.dot(grad_N_list, grad_N_list).item() + 1e-6 # 1e-4 added to avoid division by zero
+    N_norm = np.sqrt(NdotN)
+    
+    # dot product between real and fake gradients
+    CdotE = torch.dot(grad_C_list, grad_E_list).item()
+    CdotN = torch.dot(grad_C_list, grad_N_list).item()
+    EdotN = torch.dot(grad_E_list, grad_N_list).item()
+    fdotr = rdotf
+    
+    # Real and Fake scores
+    rs = torch.mean(torch.sigmoid(real_validity))
+    fs = torch.mean(torch.sigmoid(fake_validity))     
+
+    if self._normalized_aw:
+        # Implementation of normalized version of aw-method, i.e. Algorithm 1
+        if rs < self._alpha1 or rs < (fs - self._delta):
+            if rdotf <= 0:
+                # Case 1: 
+                w_r = (1/r_norm) + self._epsilon
+                w_f = (-fdotr/(fdotf*r_norm)) + self._epsilon
+            else:
+                # Case 2: 
+                w_r = (1/r_norm) + self._epsilon
+                w_f = self._epsilon
+        elif rs > self._alpha2 and rs > (fs - self._delta):
+            if rdotf <= 0:
+                # Case 3: 
+                w_r = (-rdotf/(rdotr*f_norm)) + self._epsilon
+                w_f = (1/f_norm) + self._epsilon
+            else:
+                # Case 4: 
+                w_r = self._epsilon
+                w_f = (1/f_norm) + self._epsilon
+        else:
+            # Case 5
+            w_r = (1/r_norm) + self._epsilon
+            w_f = (1/f_norm) + self._epsilon	
+    else:
+        # Implementation of non-normalized version of aw-method, i.e. Algorithm 2
+        if rs < self._alpha1 or rs < (fs - self._delta):
+            if rdotf <= 0:
+                # Case 1: 
+                w_r = 1 + self._epsilon
+                w_f = (-fdotr/fdotf) + self._epsilon
+            else:
+                # Case 2: 
+                w_r = 1 + self._epsilon
+                w_f = self._epsilon
+        elif rs > self._alpha2 and rs > (fs - self._delta):
+            if rdotf <= 0:
+                # Case 3: 
+                w_r = (-rdotf/rdotr) + self._epsilon
+                w_f = 1 + self._epsilon
+            else:
+                # Case 4: 
+                w_r = self._epsilon
+                w_f = 1 + self._epsilon
+        else:
+            # Case 5
+            w_r = 1 + self._epsilon
+            w_f = 1 + self._epsilon
+
+    # calculating aw_loss
+    aw_loss = w_r * Dloss_real + w_f * Dloss_fake
+
+    # updating gradient, i.e. getting aw_loss gradient
+    for index, (_, param) in enumerate(Dis_Net.named_parameters()):
+        print(grad_real_tensor[index])
+        print(grad_fake_tensor[index])
+        param.grad = w_r * grad_real_tensor[index] + w_f * grad_fake_tensor[index]
+
+    return aw_loss
