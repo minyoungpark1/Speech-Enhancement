@@ -24,7 +24,7 @@ _C.CROP_FRAMES = 160
 _C.RESIDUAL_LAYERS = 30
 _C.RESIDUAL_CHANNELS = 64
 _C.DILATION_CYCLE_LENGTH = 10
-_C.NOISE_SCHEDULE = np.linspace(1e-4, 0.035, 50).tolist()
+_C.NOISE_SCHEDULE = 50
 _C.INFERENCE_NOISE_SCHEDULE = [0.0001, 0.001, 0.01, 0.05, 0.2, 0.35]
 
 _C.LOSS_WEIGHTS = [0.1, 0.9, 0.2, 0.05]
@@ -103,6 +103,8 @@ def update_config(config, args):
     # set local rank for distributed training
     if _check_args('rank'):
         config.RANK = args.rank
+        
+    config.NOISE_SCHEDULE = np.linspace(1e-4, 0.035, config.NOISE_SCHEDULE).tolist()
 
     # output folder
     config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
