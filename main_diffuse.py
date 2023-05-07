@@ -165,6 +165,7 @@ def main_worker(gpu, ngpus_per_node, args, config):
         torch.distributed.barrier()
     # create model
     print("=> creating model '{}'".format(args.arch))
+    print(len(config.NOISE_SCHEDULE))
     if args.arch.startswith('diffuse'):
         model = DiffuSE(
             config.DILATION_CYCLE_LENGTH,
