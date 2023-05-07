@@ -151,7 +151,7 @@ class Collator:
                 if self.get_spec:
                     del record['spectrogram']
             
-            chances, succeeded = 5, 0
+            chances, succeeded = 10, 0
             
             # Five more chance to avoid getting a silent signal
             while chances > 0 and not succeeded:
@@ -170,17 +170,19 @@ class Collator:
                     del record['spectrogram']
                 continue
         
-        if len(minibatch) == 1:
-            audio = minibatch[0]['audio'].unsqueeze(0)
-            noisy = minibatch[0]['noisy'].unsqueeze(0)
-            if self.get_spec:
-                spectrogram = minibatch[0]['spectrogram'].unsqueeze(0)
-        else:
-            audio = np.stack([record['audio'] for record in minibatch if 'audio' in record])
-            noisy = np.stack([record['noisy'] for record in minibatch if 'noisy' in record])
-            if self.get_spec:
-                spectrogram = np.stack([record['spectrogram'] for record \
-                                        in minibatch if 'spectrogram' in record])
+        # if len(minibatch) == 1:
+        #     audio = minibatch[0]['audio'][None, ...]
+        #     print(audio.shape)
+        #     noisy = minibatch[0]['noisy'][None, ...]
+        #     print(noisy.shape)
+        #     if self.get_spec:
+        #         spectrogram = minibatch[0]['spectrogram'][None, ...]
+        # else:
+        audio = np.stack([record['audio'] for record in minibatch if 'audio' in record])
+        noisy = np.stack([record['noisy'] for record in minibatch if 'noisy' in record])
+        if self.get_spec:
+            spectrogram = np.stack([record['spectrogram'] for record \
+                                    in minibatch if 'spectrogram' in record])
         
         if self.get_spec:
             return {

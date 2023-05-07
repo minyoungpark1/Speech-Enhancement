@@ -25,13 +25,13 @@ from config import get_config
 from models.generator import TSCNet
 from models.discriminator import Discriminator
 from datasets.voicebank_dataset import VoicebankDataset, Collator
-from core.function import train_cmgan, validate_cmgan
-from core.criterion import build_criterion
+from core.function import train_gan, validate_gan
+# from core.function import train_cmgan, validate_cmgan
 from core.optimizer import build_optimizer
 from utils.utils import create_logger, save_checkpoint
 
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-os.environ['NCCL_BLOCKING_WAIT'] = "1"
+# os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+# os.environ['NCCL_BLOCKING_WAIT'] = "1"
 
 model_names = ['scp-gan', 'cmgan'
                ]
@@ -184,10 +184,6 @@ def main_worker(gpu, ngpus_per_node, args, config):
     criterion = torch.nn.MSELoss().cuda(args.gpu)
     optimizer = build_optimizer(args, model)
     optimizer_disc = build_optimizer(args, discriminator, lr=args.lr*2)
-    # optimizer = torch.optim.AdamW(self.model.parameters(), lr=args.init_lr)
-    #     self.optimizer_disc = torch.optim.AdamW(self.discriminator.parameters(), lr=2*args.init_lr)
-
-    # scaler = torch.cuda.amp.GradScaler()
     
     best_loss = 1e8
     # optionally resume from a checkpoint
@@ -277,12 +273,12 @@ def main_worker(gpu, ngpus_per_node, args, config):
             valid_sampler.set_epoch(epoch)
 
         # train & validate for one epoch
-        train_gen_loss, train_disc_loss = train_cmgan(train_loader, 
+        train_gen_loss, train_disc_loss = train_gan(train_loader, 
                                                       model, discriminator, criterion,
                                                       optimizer, optimizer_disc, 
                                                       lr_scheduler_G, lr_scheduler_D,
                                                       logger, epoch,  args, config)
-        valid_gen_loss, valid_disc_loss = validate_cmgan(valid_loader,
+        valid_gen_loss, valid_disc_loss = validate_gan(valid_loader,
                                                          model, discriminator, criterion,
                                                          logger, epoch, args, config)
 

@@ -225,12 +225,12 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
         
         est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
+        est_audio = torch.istft(est_spec_uncompress, config.N_FFT, 
+                                config.HOP_SAMPLES, window=hamming_window, onesided=True)
             
         if args.arch == 'scp-gan':
             ################### Consistency Presering Network #################
             # Enhanced audio pipeline
-            est_audio = torch.istft(est_spec_uncompress, config.N_FFT, 
-                                    config.HOP_SAMPLES, window=hamming_window, onesided=True)
             est_prime_spec = torch.stft(est_audio, config.N_FFT, config.HOP_SAMPLES, 
                                     window=hamming_window,
                                     onesided=True, return_complex=True)
@@ -275,7 +275,8 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             Q_y_y = batch_pesq(clean_audio_list, clean_audio_list)
             L_C = criterion(D_y_y.flatten(), Q_y_y)
             
-            noisy_real, noisy_imag = noisy_spec.permute(0, 1, 3, 2), noisy_spec.permute(0, 1, 3, 2)
+            noisy_real = noisy_spec[:,0,...].unsqueeze(1).permute(0, 1, 3, 2)
+            noisy_imag = noisy_spec[:,1,...].unsqueeze(1).permute(0, 1, 3, 2)
             noisy_mag = torch.sqrt(noisy_real**2 + noisy_imag**2)
             D_x_y = discriminator(noisy_mag, clean_mag)
             
@@ -283,11 +284,14 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             Q_x_y = batch_pesq(noisy_audio_list, clean_audio_list)
             L_N = criterion(D_x_y.flatten(), Q_x_y)
             
-            
+            sc_loss = compute_self_correcting_weight_loss_weights(discriminator, 
+                                                                  optimizer_disc,
+                                                                  L_C, L_E, L_N)
+            discrim_loss_metric = L + sc_loss
         else:
             discrim_loss_metric = L + L_E
                               
-        discrim_loss_metric.backward()
+        discrim_loss_metric.backward(retain_graph=True)
         optimizer_disc.step()
         
         torch.cuda.synchronize()
@@ -318,6 +322,107 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
 
     return gen_losses.avg, disc_losses.avg
+
+
+@torch.no_grad()
+def validate_gan(valid_loader, model, discriminator, criterion, logger, 
+                   epoch, args, config):
+    batch_time = AverageMeter()
+    gen_losses = AverageMeter()
+    disc_losses = AverageMeter()
+    # accuracies = AverageMeter()
+    model.eval()
+    discriminator.eval()
+    end = time.time()
+
+    progress = ProgressMeter(
+            len(valid_loader),
+            [batch_time, gen_losses, disc_losses],
+            # [batch_time, losses, accuracies],
+            prefix='Test: ')
+
+    for idx, batch in enumerate(valid_loader):
+        clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
+            one_labels, hamming_window = batch_stft(batch, args, config)
+    
+        est_real, est_imag = model(noisy_spec)
+        est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
+        est_mag = torch.sqrt(est_real ** 2 + est_imag ** 2)
+        clean_mag = torch.sqrt(clean_real ** 2 + clean_imag ** 2)
+    
+        predict_fake_metric = discriminator(clean_mag, est_mag)
+        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
+        loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
+    
+        est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
+        est_audio = torch.istft(est_spec_uncompress, config.N_FFT, config.HOP_SAMPLES, 
+                                window=hamming_window, onesided=True)
+    
+        if args.arch == 'scp-gan':
+            ################### Consistency Presering Network #################
+            # Enhanced audio pipeline
+            est_prime_spec = torch.stft(est_audio, config.N_FFT, config.HOP_SAMPLES, 
+                                    window=hamming_window,
+                                    onesided=True, return_complex=True)
+            est_prime_mag = est_prime_spec.abs()
+            
+            # Clean* audio pipeline
+            clean_spec_uncompress = power_uncompress(clean_real, clean_imag).squeeze(1)
+            clean_audio_prime = torch.istft(clean_spec_uncompress, config.N_FFT, 
+                                    config.HOP_SAMPLES, window=hamming_window, 
+                                    onesided=True)
+            clean_audio_prime_spec = torch.stft(clean_audio_prime, config.N_FFT, 
+                                    config.HOP_SAMPLES, window=hamming_window,
+                                    onesided=True, return_complex=True)
+            clean_audio_prime_mag = clean_audio_prime_spec.abs()
+            
+            loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
+            time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
+        else:
+            loss_mag = criterion(est_mag, clean_mag)
+            time_loss = torch.mean(torch.abs(est_audio - clean))
+        length = est_audio.size(-1)
+        
+        loss = config.LOSS_WEIGHTS[0] * loss_ri + \
+            config.LOSS_WEIGHTS[1] * loss_mag + \
+                config.LOSS_WEIGHTS[2] * time_loss + \
+                    config.LOSS_WEIGHTS[3] * gen_loss_GAN
+    
+        est_audio_list = list(est_audio.detach().cpu().numpy())
+        clean_audio_list = list(clean.cpu().numpy()[:, :length])
+        
+        D_Gx_y = discriminator(est_mag.detach(), clean_mag)
+        Q_Gx_y = batch_pesq(est_audio_list, clean_audio_list)
+        D_y_y = discriminator(clean_mag, clean_mag)
+        
+        L = criterion(D_y_y.flatten(), one_labels)
+        L_E = criterion(D_Gx_y.flatten(), Q_Gx_y)
+        
+        # Unable to compute validation self-correcting loss
+        discrim_loss_metric = L + L_E
+    
+        torch.cuda.synchronize()
+        
+        gen_losses.update(loss.item(), clean.size(0))
+        disc_losses.update(discrim_loss_metric.item(), clean.size(0))
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if idx % args.print_freq == 0:
+            memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
+            logger.info(
+                f'Test: [{idx}/{len(valid_loader)}]\t'
+                f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                f'generator loss {gen_losses.val:.4f} ({gen_losses.avg:.4f})\t'
+                f'discriminator loss {disc_losses.val:.4f} ({disc_losses.avg:.4f})\t'
+                f'Mem {memory_used:.0f}MB')
+
+            progress.display(idx)
+            
+    return gen_losses.avg, disc_losses.avg
+
 
 def train_cmgan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
               lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
@@ -381,7 +486,7 @@ def train_cmgan(train_loader, model, discriminator, criterion, optimizer, optimi
         
         est_audio_list = list(est_audio.detach().cpu().numpy())
         clean_audio_list = list(clean.detach().cpu().numpy()[:, :length])
-        pesq_score = batch_pesq(clean_audio_list, est_audio_list, args)
+        pesq_score = batch_pesq(clean_audio_list, est_audio_list)
         
         # The calculation of PESQ can be None due to silent part
         if pesq_score is not None:
@@ -474,7 +579,7 @@ def validate_cmgan(valid_loader, model, discriminator, criterion, logger,
     
         est_audio_list = list(est_audio.detach().cpu().numpy())
         clean_audio_list = list(clean.cpu().numpy()[:, :length])
-        pesq_score = batch_pesq(clean_audio_list, est_audio_list, args)
+        pesq_score = batch_pesq(clean_audio_list, est_audio_list)
         if pesq_score is not None:
             predict_enhance_metric = discriminator(clean_mag, est_mag.detach())
             predict_max_metric = discriminator(clean_mag, clean_mag)
@@ -571,7 +676,7 @@ def compute_self_correcting_weight_loss_weights(discriminator, optimizer_disc, L
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
 
-    L_C.backward()
+    L_C.backward(retain_graph=True)
     
     grad_C_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_C_list = torch.cat([grad.reshape(-1) for grad in grad_C_tensor], dim=0)
@@ -583,8 +688,7 @@ def compute_self_correcting_weight_loss_weights(discriminator, optimizer_disc, L
     # tensor with real gradients
     grad_E_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_E_list = torch.cat([grad.reshape(-1) for grad in grad_E_tensor], dim=0)
-    EdotE = torch.dot(grad_E_list, grad_E_list).item() + 1e-6 # 1e-4 added to avoid division by zero
-    E_norm = np.sqrt(EdotE)
+    EdotE = torch.dot(grad_E_list, grad_E_list).item() + 1e-6 # 1e-6 added to avoid division by zero
     
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
@@ -592,75 +696,34 @@ def compute_self_correcting_weight_loss_weights(discriminator, optimizer_disc, L
     # tensor with real gradients
     grad_N_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_N_list = torch.cat([grad.reshape(-1) for grad in grad_N_tensor], dim=0)
-    NdotN = torch.dot(grad_N_list, grad_N_list).item() + 1e-6 # 1e-4 added to avoid division by zero
-    N_norm = np.sqrt(NdotN)
+    NdotN = torch.dot(grad_N_list, grad_N_list).item() + 1e-6
     
     # dot product between real and fake gradients
     CdotE = torch.dot(grad_C_list, grad_E_list).item()
     CdotN = torch.dot(grad_C_list, grad_N_list).item()
     EdotN = torch.dot(grad_E_list, grad_N_list).item()
-    fdotr = rdotf
-    
-    # Real and Fake scores
-    rs = torch.mean(torch.sigmoid(real_validity))
-    fs = torch.mean(torch.sigmoid(fake_validity))     
 
-    if self._normalized_aw:
-        # Implementation of normalized version of aw-method, i.e. Algorithm 1
-        if rs < self._alpha1 or rs < (fs - self._delta):
-            if rdotf <= 0:
-                # Case 1: 
-                w_r = (1/r_norm) + self._epsilon
-                w_f = (-fdotr/(fdotf*r_norm)) + self._epsilon
-            else:
-                # Case 2: 
-                w_r = (1/r_norm) + self._epsilon
-                w_f = self._epsilon
-        elif rs > self._alpha2 and rs > (fs - self._delta):
-            if rdotf <= 0:
-                # Case 3: 
-                w_r = (-rdotf/(rdotr*f_norm)) + self._epsilon
-                w_f = (1/f_norm) + self._epsilon
-            else:
-                # Case 4: 
-                w_r = self._epsilon
-                w_f = (1/f_norm) + self._epsilon
+    if CdotE > 0:
+        w_C, w_E = 1, 1
+        if torch.dot(w_C*grad_C_list + w_E*grad_E_list, grad_N_list).item() > 0:
+            w_N = 1
         else:
-            # Case 5
-            w_r = (1/r_norm) + self._epsilon
-            w_f = (1/f_norm) + self._epsilon	
+            w_N = -CdotN/NdotN - EdotN/NdotN
     else:
-        # Implementation of non-normalized version of aw-method, i.e. Algorithm 2
-        if rs < self._alpha1 or rs < (fs - self._delta):
-            if rdotf <= 0:
-                # Case 1: 
-                w_r = 1 + self._epsilon
-                w_f = (-fdotr/fdotf) + self._epsilon
-            else:
-                # Case 2: 
-                w_r = 1 + self._epsilon
-                w_f = self._epsilon
-        elif rs > self._alpha2 and rs > (fs - self._delta):
-            if rdotf <= 0:
-                # Case 3: 
-                w_r = (-rdotf/rdotr) + self._epsilon
-                w_f = 1 + self._epsilon
-            else:
-                # Case 4: 
-                w_r = self._epsilon
-                w_f = 1 + self._epsilon
+        w_C = 1
+        w_E = -CdotE/EdotE
+        if torch.dot(w_C*grad_C_list + w_E*grad_E_list, grad_N_list).item() > 0:
+            w_N = 1
         else:
-            # Case 5
-            w_r = 1 + self._epsilon
-            w_f = 1 + self._epsilon
+            w_N = -CdotN/NdotN + (CdotE * EdotN)/(EdotE * NdotN)
 
     # calculating aw_loss
-    aw_loss = w_r * Dloss_real + w_f * Dloss_fake
+    self_correcting_loss = w_C*L_C + w_E*L_E + w_N*L_N
 
-    # updating gradient, i.e. getting aw_loss gradient
-    for index, (_, param) in enumerate(Dis_Net.named_parameters()):
-        print(grad_real_tensor[index])
-        print(grad_fake_tensor[index])
-        param.grad = w_r * grad_real_tensor[index] + w_f * grad_fake_tensor[index]
+    # # updating gradient, i.e. getting aw_loss gradient
+    for index, (_, param) in enumerate(discriminator.named_parameters()):
+        param.grad = w_C * grad_C_tensor[index] + \
+            w_E * grad_E_tensor[index] + \
+                w_N * grad_N_tensor[index]
 
-    return aw_loss
+    return self_correcting_loss
