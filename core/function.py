@@ -359,9 +359,6 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         if args.arch == 'scp-gan':
             ################### Consistency Presering Network #################
             # Enhanced audio pipeline
-            est_prime_spec = torch.stft(est_audio, config.N_FFT, config.HOP_SAMPLES, 
-                                    window=hamming_window,
-                                    onesided=True, return_complex=True)
             est_prime_mag = compute_compressed_mag(est_audio, config.N_FFT, 
                                                    config.HOP_SAMPLES, hamming_window)
             
@@ -509,7 +506,7 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
     # tensor with enhanced gradients
     grad_E_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_E_list = torch.cat([grad.reshape(-1) for grad in grad_E_tensor], dim=0)
-    EdotE = torch.dot(grad_E_list, grad_E_list).item() + 1e-6 # 1e-6 added to avoid division by zero
+    EdotE = torch.dot(grad_E_list, grad_E_list).item()
     
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
@@ -517,7 +514,7 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
     # tensor with noisy gradients
     grad_N_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_N_list = torch.cat([grad.reshape(-1) for grad in grad_N_tensor], dim=0)
-    NdotN = torch.dot(grad_N_list, grad_N_list).item() + 1e-6
+    NdotN = torch.dot(grad_N_list, grad_N_list).item()
     
     # dot product between gradients
     CdotE = torch.dot(grad_C_list, grad_E_list).item()
@@ -529,14 +526,14 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
         if torch.dot(w_C*grad_C_list + w_E*grad_E_list, grad_N_list).item() > 0:
             w_N = 1
         else:
-            w_N = -CdotN/NdotN - EdotN/NdotN
+            w_N = -(CdotN + 1e-6)/(NdotN + 1e-6)- (EdotN + 1e-6)/(NdotN + 1e-6)
     else:
         w_C = 1
-        w_E = -CdotE/EdotE
+        w_E = -(CdotE + 1e-6)/(EdotE + 1e-6)
         if torch.dot(w_C*grad_C_list + w_E*grad_E_list, grad_N_list).item() > 0:
             w_N = 1
         else:
-            w_N = -CdotN/NdotN + (CdotE * EdotN)/(EdotE * NdotN)
+            w_N = -(CdotN + 1e-6)/(NdotN + 1e-6) + (CdotE * EdotN + 1e-6)/(EdotE * NdotN + 1e-6)
 
     optimizer_disc.zero_grad()
     # calculating self correcting loss
