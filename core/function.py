@@ -202,16 +202,14 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
     iters_per_epoch = len(train_loader)
 
     for idx, batch in enumerate(train_loader):
-        optimizer.zero_grad()
-        optimizer_disc.zero_grad()
-        
         # measure data loading time
         data_time.update(time.time() - end)
         
         lr_scheduler_G.step(epoch*iters_per_epoch+idx)
         lr_scheduler_D.step(epoch*iters_per_epoch+idx)
         learning_rates.update(optimizer.param_groups[0]['lr'])
-    
+        optimizer.zero_grad()
+        
         clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
             one_labels, hamming_window= batch_stft(batch, args, config)
             
@@ -260,6 +258,8 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                     
         loss.backward()
         optimizer.step()
+        
+        optimizer_disc.zero_grad()
         
         est_audio_list = list(est_audio.detach().cpu().numpy())
         clean_audio_list = list(clean.cpu().numpy()[:, :length])
