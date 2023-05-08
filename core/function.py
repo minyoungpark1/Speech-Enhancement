@@ -229,16 +229,18 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         if args.arch == 'scp-gan':
             ################### Consistency Preserving Network #################
             # Enhanced audio pipeline
-            est_prime_mag = compute_compressed_mag(est_audio, config.N_FFT, 
-                                                   config.HOP_SAMPLES, hamming_window)
+            est_prime_mag = compute_mag(est_audio, config.N_FFT, 
+                                        config.HOP_SAMPLES, hamming_window,
+                                        compress=args.compress)
             
             # Clean* audio pipeline
             clean_spec_uncompress = power_uncompress(clean_real, clean_imag).squeeze(1)
             clean_audio_prime = torch.istft(clean_spec_uncompress, config.N_FFT, 
                                     config.HOP_SAMPLES, window=hamming_window, 
                                     onesided=True)
-            clean_audio_prime_mag = compute_compressed_mag(clean_audio_prime, config.N_FFT, 
-                                                   config.HOP_SAMPLES, hamming_window)
+            clean_audio_prime_mag = compute_mag(clean_audio_prime, config.N_FFT, 
+                                                config.HOP_SAMPLES, hamming_window,
+                                                compress=args.compress)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
@@ -359,16 +361,18 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         if args.arch == 'scp-gan':
             ################### Consistency Presering Network #################
             # Enhanced audio pipeline
-            est_prime_mag = compute_compressed_mag(est_audio, config.N_FFT, 
-                                                   config.HOP_SAMPLES, hamming_window)
+            est_prime_mag = compute_mag(est_audio, config.N_FFT, 
+                                        config.HOP_SAMPLES, hamming_window,
+                                        compress=args.compress)
             
             # Clean* audio pipeline
             clean_spec_uncompress = power_uncompress(clean_real, clean_imag).squeeze(1)
             clean_audio_prime = torch.istft(clean_spec_uncompress, config.N_FFT, 
                                     config.HOP_SAMPLES, window=hamming_window, 
                                     onesided=True)
-            clean_audio_prime_mag = compute_compressed_mag(clean_audio_prime, config.N_FFT, 
-                                                   config.HOP_SAMPLES, hamming_window)
+            clean_audio_prime_mag = compute_mag(clean_audio_prime, config.N_FFT, 
+                                                config.HOP_SAMPLES, hamming_window,
+                                                compress=args.compress)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
@@ -479,20 +483,20 @@ def compute_angle(x1, x2):
     
     return angle
 
-def compute_compressed_mag(signal, n_fft, hop_length, window):
-    # spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
-    #                                      window=window, onesided=True, 
-    #                                      return_complex=True))
-    # spec = power_compress(spec)
-    # real = spec[:, 0, :, :].unsqueeze(1)
-    # imag = spec[:, 1, :, :].unsqueeze(1)
-    # mag = torch.sqrt(real**2 + imag**2)
-    
-    spec = torch.stft(signal, n_fft, hop_length, 
-                                         window=window, onesided=True, 
-                                         return_complex=True)
-    mag = spec.abs()
-    # mag = mag**0.3
+def compute_mag(signal, n_fft, hop_length, window, compress=False):
+    if compress:
+        spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
+                                              window=window, onesided=True, 
+                                              return_complex=True))
+        spec = power_compress(spec)
+        real = spec[:, 0, :, :].unsqueeze(1)
+        imag = spec[:, 1, :, :].unsqueeze(1)
+        mag = torch.sqrt(real**2 + imag**2)
+    else:
+        spec = torch.stft(signal, n_fft, hop_length, 
+                                             window=window, onesided=True, 
+                                             return_complex=True)
+        mag = spec.abs()
     return mag
 
 def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):

@@ -95,12 +95,16 @@ def parse_option():
                              'N processes per node, which has N GPUs. This is the '
                              'fastest way to use PyTorch for either single node or '
                              'multi node data parallel training')
+    
     parser.add_argument('--optimizer', default='sgd', type=str,
                         choices=['sgd', 'adamw', 'lars', 'lamb'],
                         help='optimizer used (default: sgd)')
     parser.add_argument('--criterion', default='l1', type=str,
                         choices=['mae', 'l1', 'mse', 'l2', 'quantile'],
                         help='criterion used (default: l1)')
+    
+    parser.add_argument('--compress', action='store_true',
+                        help='Decide whether compress spectrograms or not')
 
     args, unparsed = parser.parse_known_args()
     
