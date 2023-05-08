@@ -229,7 +229,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                                 config.HOP_SAMPLES, window=hamming_window, onesided=True)
             
         if args.arch == 'scp-gan':
-            ################### Consistency Presering Network #################
+            ################### Consistency Preserving Network #################
             # Enhanced audio pipeline
             est_prime_spec = torch.stft(est_audio, config.N_FFT, config.HOP_SAMPLES, 
                                     window=hamming_window,
@@ -284,14 +284,14 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             Q_x_y = batch_pesq(clean_audio_list, noisy_audio_list)
             L_N = criterion(D_x_y.flatten(), Q_x_y)
             
-            sc_loss = compute_self_correcting_weight_loss_weights(discriminator, 
-                                                                  optimizer_disc,
-                                                                  L_C, L_E, L_N)
+            sc_loss = compute_self_correcting_loss_weights(discriminator,
+                                                           optimizer_disc,
+                                                           L_C, L_E, L_N)
             discrim_loss_metric = L + sc_loss
         else:
             discrim_loss_metric = L + L_E
                               
-        discrim_loss_metric.backward(retain_graph=True)
+        discrim_loss_metric.backward()
         optimizer_disc.step()
         
         torch.cuda.synchronize()
@@ -381,8 +381,8 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         else:
             loss_mag = criterion(est_mag, clean_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean))
+            
         length = est_audio.size(-1)
-        
         loss = config.LOSS_WEIGHTS[0] * loss_ri + \
             config.LOSS_WEIGHTS[1] * loss_mag + \
                 config.LOSS_WEIGHTS[2] * time_loss + \
@@ -400,193 +400,6 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         
         # Unable to compute validation self-correcting loss
         discrim_loss_metric = L + L_E
-    
-        torch.cuda.synchronize()
-        
-        gen_losses.update(loss.item(), clean.size(0))
-        disc_losses.update(discrim_loss_metric.item(), clean.size(0))
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        if idx % args.print_freq == 0:
-            memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
-            logger.info(
-                f'Test: [{idx}/{len(valid_loader)}]\t'
-                f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                f'generator loss {gen_losses.val:.4f} ({gen_losses.avg:.4f})\t'
-                f'discriminator loss {disc_losses.val:.4f} ({disc_losses.avg:.4f})\t'
-                f'Mem {memory_used:.0f}MB')
-
-            progress.display(idx)
-            
-    return gen_losses.avg, disc_losses.avg
-
-
-def train_cmgan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
-              lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
-
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    learning_rates = AverageMeter()
-    gen_losses = AverageMeter()
-    disc_losses = AverageMeter()
-
-    progress = ProgressMeter(
-        len(train_loader),
-        [batch_time, data_time, gen_losses, disc_losses],
-        prefix="Epoch: [{}]".format(epoch))
-
-    model.train()
-    discriminator.train()
-    
-    start = time.time()
-    end = time.time()
-    iters_per_epoch = len(train_loader)
-
-    for idx, batch in enumerate(train_loader):
-        optimizer.zero_grad()
-        optimizer_disc.zero_grad()
-        
-        # measure data loading time
-        data_time.update(time.time() - end)
-        
-        lr_scheduler_G.step(epoch*iters_per_epoch+idx)
-        lr_scheduler_D.step(epoch*iters_per_epoch+idx)
-        learning_rates.update(optimizer.param_groups[0]['lr'])
-    
-        clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
-            one_labels, hamming_window= batch_stft(batch, args, config)
-            
-        est_real, est_imag = model(noisy_spec)
-        est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
-        est_mag = torch.sqrt(est_real**2 + est_imag**2)
-        clean_mag = torch.sqrt(clean_real**2 + clean_imag**2)
-        
-        predict_fake_metric = discriminator(clean_mag, est_mag)
-        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
-        loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
-        
-        est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
-        est_audio = torch.istft(est_spec_uncompress, config.N_FFT, 
-                                config.HOP_SAMPLES, window=hamming_window, onesided=True)
-        
-        loss_mag = criterion(est_mag, clean_mag)
-        time_loss = torch.mean(torch.abs(est_audio - clean))
-        
-        length = est_audio.size(-1)
-        loss = config.LOSS_WEIGHTS[0] * loss_ri + \
-            config.LOSS_WEIGHTS[1] * loss_mag + \
-                config.LOSS_WEIGHTS[2] * time_loss + \
-                    config.LOSS_WEIGHTS[3] * gen_loss_GAN
-        
-        loss.backward()
-        optimizer.step()
-        
-        est_audio_list = list(est_audio.detach().cpu().numpy())
-        clean_audio_list = list(clean.detach().cpu().numpy()[:, :length])
-        pesq_score = batch_pesq(clean_audio_list, est_audio_list)
-        
-        # The calculation of PESQ can be None due to silent part
-        if pesq_score is not None:
-            predict_enhance_metric = discriminator(clean_mag, est_mag.detach())
-            predict_max_metric = discriminator(clean_mag, clean_mag)
-            L = criterion(predict_max_metric.flatten(), one_labels)
-            L_E = criterion(predict_enhance_metric.flatten(), pesq_score)
-            discrim_loss_metric = L + L_E
-                
-            discrim_loss_metric.backward()
-            optimizer_disc.step()
-        else:
-            discrim_loss_metric = torch.tensor([0.])
-            
-        torch.cuda.synchronize()
-        
-        gen_losses.update(loss.item(), clean.size(0))
-        disc_losses.update(discrim_loss_metric.item(), clean.size(0))
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        if idx % args.print_freq == 0:
-            lr = optimizer.param_groups[0]['lr']
-            wd = optimizer.param_groups[0]['weight_decay']
-            memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
-            etas = batch_time.avg * (iters_per_epoch - idx)
-            logger.info(
-                f'Train: [{epoch}/{args.epochs}][{idx}/{iters_per_epoch}]\t'
-                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
-                f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
-                f'generator loss {gen_losses.val:.4f} ({gen_losses.avg:.4f})\t'
-                f'discriminator loss {disc_losses.val:.4f} ({disc_losses.avg:.4f})\t'
-                f'mem {memory_used:.0f}MB')
-
-            progress.display(idx)
-
-    epoch_time = time.time() - start
-    logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
-
-    return gen_losses.avg, disc_losses.avg
-
-@torch.no_grad()
-def validate_cmgan(valid_loader, model, discriminator, criterion, logger, 
-                   epoch, args, config):
-    batch_time = AverageMeter()
-    gen_losses = AverageMeter()
-    disc_losses = AverageMeter()
-    # accuracies = AverageMeter()
-    model.eval()
-    discriminator.eval()
-    end = time.time()
-
-    progress = ProgressMeter(
-            len(valid_loader),
-            [batch_time, gen_losses, disc_losses],
-            # [batch_time, losses, accuracies],
-            prefix='Test: ')
-
-    for idx, batch in enumerate(valid_loader):
-        clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
-            one_labels, hamming_window = batch_stft(batch, args, config)
-    
-        est_real, est_imag = model(noisy_spec)
-        est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
-        est_mag = torch.sqrt(est_real ** 2 + est_imag ** 2)
-        clean_mag = torch.sqrt(clean_real ** 2 + clean_imag ** 2)
-    
-        predict_fake_metric = discriminator(clean_mag, est_mag)
-        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
-        # gen_loss_GAN = F.mse_loss(predict_fake_metric.flatten(), one_labels.float())
-    
-        loss_mag = criterion(est_mag, clean_mag)
-        # loss_mag = F.mse_loss(est_mag, clean_mag)
-        loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
-        # loss_ri = F.mse_loss(est_real, clean_real) + F.mse_loss(est_imag, clean_imag)
-    
-        est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
-        est_audio = torch.istft(est_spec_uncompress, config.N_FFT, config.HOP_SAMPLES, 
-                                window=hamming_window, onesided=True)
-    
-        time_loss = torch.mean(torch.abs(est_audio - clean))
-        length = est_audio.size(-1)
-        
-        loss = config.LOSS_WEIGHTS[0] * loss_ri + \
-            config.LOSS_WEIGHTS[1] * loss_mag + \
-                config.LOSS_WEIGHTS[2] * time_loss + \
-                    config.LOSS_WEIGHTS[3] * gen_loss_GAN
-    
-        est_audio_list = list(est_audio.detach().cpu().numpy())
-        clean_audio_list = list(clean.cpu().numpy()[:, :length])
-        pesq_score = batch_pesq(clean_audio_list, est_audio_list)
-        if pesq_score is not None:
-            predict_enhance_metric = discriminator(clean_mag, est_mag.detach())
-            predict_max_metric = discriminator(clean_mag, clean_mag)
-            discrim_loss_metric = F.mse_loss(predict_max_metric.flatten(), one_labels) + \
-                                  F.mse_loss(predict_enhance_metric.flatten(), pesq_score)
-        else:
-            discrim_loss_metric = torch.tensor([0.])
     
         torch.cuda.synchronize()
         
@@ -672,12 +485,13 @@ def compute_angle(x1, x2):
     
     return angle
 
-def compute_self_correcting_weight_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):
+def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
 
     L_C.backward(retain_graph=True)
     
+    # tensor with clean gradients
     grad_C_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_C_list = torch.cat([grad.reshape(-1) for grad in grad_C_tensor], dim=0)
     
@@ -685,7 +499,7 @@ def compute_self_correcting_weight_loss_weights(discriminator, optimizer_disc, L
     optimizer_disc.zero_grad()
 
     L_E.backward(retain_graph=True)
-    # tensor with real gradients
+    # tensor with enhanced gradients
     grad_E_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_E_list = torch.cat([grad.reshape(-1) for grad in grad_E_tensor], dim=0)
     EdotE = torch.dot(grad_E_list, grad_E_list).item() + 1e-6 # 1e-6 added to avoid division by zero
@@ -693,12 +507,12 @@ def compute_self_correcting_weight_loss_weights(discriminator, optimizer_disc, L
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
     L_N.backward(retain_graph=True)
-    # tensor with real gradients
+    # tensor with noisy gradients
     grad_N_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_N_list = torch.cat([grad.reshape(-1) for grad in grad_N_tensor], dim=0)
     NdotN = torch.dot(grad_N_list, grad_N_list).item() + 1e-6
     
-    # dot product between real and fake gradients
+    # dot product between gradients
     CdotE = torch.dot(grad_C_list, grad_E_list).item()
     CdotN = torch.dot(grad_C_list, grad_N_list).item()
     EdotN = torch.dot(grad_E_list, grad_N_list).item()
@@ -717,10 +531,10 @@ def compute_self_correcting_weight_loss_weights(discriminator, optimizer_disc, L
         else:
             w_N = -CdotN/NdotN + (CdotE * EdotN)/(EdotE * NdotN)
 
-    # calculating aw_loss
+    # calculating self correcting loss
     self_correcting_loss = w_C*L_C + w_E*L_E + w_N*L_N
 
-    # # updating gradient, i.e. getting aw_loss gradient
+    # # updating gradient, i.e. getting self correcting gradient
     for index, (_, param) in enumerate(discriminator.named_parameters()):
         param.grad = w_C * grad_C_tensor[index] + \
             w_E * grad_E_tensor[index] + \
