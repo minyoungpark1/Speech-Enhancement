@@ -498,7 +498,8 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
 
-    L_E.backward(retain_graph=True)
+    L_E.backward()
+    # L_E.backward(retain_graph=True)
     # tensor with enhanced gradients
     grad_E_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_E_list = torch.cat([grad.reshape(-1) for grad in grad_E_tensor], dim=0)
@@ -506,7 +507,8 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
     
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
-    L_N.backward(retain_graph=True)
+    L_N.backward()
+    # L_N.backward(retain_graph=True)
     # tensor with noisy gradients
     grad_N_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_N_list = torch.cat([grad.reshape(-1) for grad in grad_N_tensor], dim=0)
@@ -531,6 +533,7 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
         else:
             w_N = -CdotN/NdotN + (CdotE * EdotN)/(EdotE * NdotN)
 
+    optimizer_disc.zero_grad()
     # calculating self correcting loss
     self_correcting_loss = w_C*L_C + w_E*L_E + w_N*L_N
 
