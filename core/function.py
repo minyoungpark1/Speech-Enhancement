@@ -491,7 +491,8 @@ def compute_mag(signal, n_fft, hop_length, window, compress=False):
         spec = power_compress(spec)
         real = spec[:, 0, :, :].unsqueeze(1)
         imag = spec[:, 1, :, :].unsqueeze(1)
-        mag = torch.sqrt(real**2 + imag**2)
+        # mag = torch.sqrt(real**2 + imag**2)
+        mag = torch.sqrt(torch.clamp(real ** 2 + imag ** 2, min=1e-7))
     else:
         spec = torch.stft(signal, n_fft, hop_length, 
                                              window=window, onesided=True, 
