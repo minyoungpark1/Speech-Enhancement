@@ -241,7 +241,6 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                                                    config.HOP_SAMPLES, hamming_window)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
-            logger.info(f'{loss_mag}')
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
         else:
             loss_mag = criterion(est_mag, clean_mag)
@@ -513,7 +512,7 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
     # tensor with enhanced gradients
     grad_E_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_E_list = torch.cat([grad.reshape(-1) for grad in grad_E_tensor], dim=0)
-    EdotE = torch.dot(grad_E_list, grad_E_list).item()
+    EdotE = torch.dot(grad_E_list, grad_E_list).item() + 1e-6
     
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
@@ -521,7 +520,7 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
     # tensor with noisy gradients
     grad_N_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_N_list = torch.cat([grad.reshape(-1) for grad in grad_N_tensor], dim=0)
-    NdotN = torch.dot(grad_N_list, grad_N_list).item()
+    NdotN = torch.dot(grad_N_list, grad_N_list).item() + 1e-6
     
     # dot product between gradients
     CdotE = torch.dot(grad_C_list, grad_E_list).item()
@@ -533,14 +532,14 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
         if torch.dot(w_C*grad_C_list + w_E*grad_E_list, grad_N_list).item() > 0:
             w_N = 1
         else:
-            w_N = -(CdotN + 1e-6)/(NdotN + 1e-6)- (EdotN + 1e-6)/(NdotN + 1e-6)
+            w_N = -(CdotN)/(NdotN)- (EdotN)/(NdotN)
     else:
         w_C = 1
-        w_E = -(CdotE + 1e-6)/(EdotE + 1e-6)
+        w_E = -(CdotE)/(EdotE)
         if torch.dot(w_C*grad_C_list + w_E*grad_E_list, grad_N_list).item() > 0:
             w_N = 1
         else:
-            w_N = -(CdotN + 1e-6)/(NdotN + 1e-6) + (CdotE * EdotN + 1e-6)/(EdotE * NdotN + 1e-6)
+            w_N = -(CdotN)/(NdotN) + (CdotE * EdotN)/(EdotE * NdotN)
 
     optimizer_disc.zero_grad()
     # calculating self correcting loss
