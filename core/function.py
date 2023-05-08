@@ -485,14 +485,19 @@ def compute_angle(x1, x2):
 
 def compute_mag(signal, n_fft, hop_length, window, compress=False):
     if compress:
-        spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
+        spec = torch.stft(signal, n_fft, hop_length, 
                                               window=window, onesided=True, 
-                                              return_complex=True))
-        spec = power_compress(spec)
-        real = spec[:, 0, :, :].unsqueeze(1)
-        imag = spec[:, 1, :, :].unsqueeze(1)
-        # mag = torch.sqrt(real**2 + imag**2)
-        mag = torch.sqrt(torch.clamp(real ** 2 + imag ** 2, min=1e-7))
+                                              return_complex=True)
+        mag = spec.abs()
+        mag = torch.log(1+mag)
+        # spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
+        #                                       window=window, onesided=True, 
+        #                                       return_complex=True))
+        # spec = power_compress(spec)
+        # real = spec[:, 0, :, :].unsqueeze(1)
+        # imag = spec[:, 1, :, :].unsqueeze(1)
+        # # mag = torch.sqrt(real**2 + imag**2)
+        # mag = torch.sqrt(torch.clamp(real ** 2 + imag ** 2, min=1e-7))
     else:
         spec = torch.stft(signal, n_fft, hop_length, 
                                              window=window, onesided=True, 
