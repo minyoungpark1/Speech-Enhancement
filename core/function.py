@@ -480,13 +480,19 @@ def compute_angle(x1, x2):
     return angle
 
 def compute_compressed_mag(signal, n_fft, hop_length, window):
-    spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
+    # spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
+    #                                      window=window, onesided=True, 
+    #                                      return_complex=True))
+    # spec = power_compress(spec)
+    # real = spec[:, 0, :, :].unsqueeze(1)
+    # imag = spec[:, 1, :, :].unsqueeze(1)
+    # mag = torch.sqrt(real**2 + imag**2)
+    
+    spec = torch.stft(signal, n_fft, hop_length, 
                                          window=window, onesided=True, 
-                                         return_complex=True))
-    spec = power_compress(spec)
-    real = spec[:, 0, :, :].unsqueeze(1)
-    imag = spec[:, 1, :, :].unsqueeze(1)
-    mag = torch.sqrt(real**2 + imag**2)
+                                         return_complex=True)
+    mag = spec.abs()
+    mag = mag**0.3
     return mag
 
 def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):
