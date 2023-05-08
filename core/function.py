@@ -229,20 +229,16 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         if args.arch == 'scp-gan':
             ################### Consistency Preserving Network #################
             # Enhanced audio pipeline
-            est_prime_spec = torch.stft(est_audio, config.N_FFT, config.HOP_SAMPLES, 
-                                    window=hamming_window,
-                                    onesided=True, return_complex=True)
-            est_prime_mag = est_prime_spec.abs()
+            est_prime_mag = compute_compressed_mag(est_audio, config.N_FFT, 
+                                                   config.HOP_SAMPLES, hamming_window)
             
             # Clean* audio pipeline
             clean_spec_uncompress = power_uncompress(clean_real, clean_imag).squeeze(1)
             clean_audio_prime = torch.istft(clean_spec_uncompress, config.N_FFT, 
                                     config.HOP_SAMPLES, window=hamming_window, 
                                     onesided=True)
-            clean_audio_prime_spec = torch.stft(clean_audio_prime, config.N_FFT, 
-                                    config.HOP_SAMPLES, window=hamming_window,
-                                    onesided=True, return_complex=True)
-            clean_audio_prime_mag = clean_audio_prime_spec.abs()
+            clean_audio_prime_mag = compute_compressed_mag(clean_audio_prime, config.N_FFT, 
+                                                   config.HOP_SAMPLES, hamming_window)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
@@ -330,7 +326,6 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
     batch_time = AverageMeter()
     gen_losses = AverageMeter()
     disc_losses = AverageMeter()
-    # accuracies = AverageMeter()
     model.eval()
     discriminator.eval()
     end = time.time()
@@ -338,7 +333,6 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
     progress = ProgressMeter(
             len(valid_loader),
             [batch_time, gen_losses, disc_losses],
-            # [batch_time, losses, accuracies],
             prefix='Test: ')
 
     for idx, batch in enumerate(valid_loader):
@@ -364,17 +358,16 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
             est_prime_spec = torch.stft(est_audio, config.N_FFT, config.HOP_SAMPLES, 
                                     window=hamming_window,
                                     onesided=True, return_complex=True)
-            est_prime_mag = est_prime_spec.abs()
+            est_prime_mag = compute_compressed_mag(est_audio, config.N_FFT, 
+                                                   config.HOP_SAMPLES, hamming_window)
             
             # Clean* audio pipeline
             clean_spec_uncompress = power_uncompress(clean_real, clean_imag).squeeze(1)
             clean_audio_prime = torch.istft(clean_spec_uncompress, config.N_FFT, 
                                     config.HOP_SAMPLES, window=hamming_window, 
                                     onesided=True)
-            clean_audio_prime_spec = torch.stft(clean_audio_prime, config.N_FFT, 
-                                    config.HOP_SAMPLES, window=hamming_window,
-                                    onesided=True, return_complex=True)
-            clean_audio_prime_mag = clean_audio_prime_spec.abs()
+            clean_audio_prime_mag = compute_compressed_mag(clean_audio_prime, config.N_FFT, 
+                                                   config.HOP_SAMPLES, hamming_window)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
@@ -484,6 +477,16 @@ def compute_angle(x1, x2):
     angle = torch.abs(torch.acos(cos))%torch.pi
     
     return angle
+
+def compute_compressed_mag(signal, n_fft, hop_length, window):
+    spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
+                                         window=window, onesided=True, 
+                                         return_complex=True))
+    spec = power_compress(spec)
+    real = spec[:, 0, :, :].unsqueeze(1)
+    imag = spec[:, 1, :, :].unsqueeze(1)
+    mag = torch.sqrt(real**2 + imag**2)
+    return mag
 
 def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):
     # resetting gradient back to zero
