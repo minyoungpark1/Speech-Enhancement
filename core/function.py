@@ -241,6 +241,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                                                    config.HOP_SAMPLES, hamming_window)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
+            logger.info(f'{loss_mag}')
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
         else:
             loss_mag = criterion(est_mag, clean_mag)
@@ -269,25 +270,25 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         L = criterion(D_y_y.flatten(), one_labels)
         L_E = criterion(D_Gx_y.flatten(), Q_Gx_y)
         
-        # if args.arch == 'scp-gan':
-        #     Q_y_y = batch_pesq(clean_audio_list, clean_audio_list)
-        #     L_C = criterion(D_y_y.flatten(), Q_y_y)
+        if args.arch == 'scp-gan':
+            Q_y_y = batch_pesq(clean_audio_list, clean_audio_list)
+            L_C = criterion(D_y_y.flatten(), Q_y_y)
             
-        #     noisy_real = noisy_spec[:,0,...].unsqueeze(1).permute(0, 1, 3, 2)
-        #     noisy_imag = noisy_spec[:,1,...].unsqueeze(1).permute(0, 1, 3, 2)
-        #     noisy_mag = torch.sqrt(noisy_real**2 + noisy_imag**2)
-        #     D_x_y = discriminator(noisy_mag, clean_mag)
+            noisy_real = noisy_spec[:,0,...].unsqueeze(1).permute(0, 1, 3, 2)
+            noisy_imag = noisy_spec[:,1,...].unsqueeze(1).permute(0, 1, 3, 2)
+            noisy_mag = torch.sqrt(noisy_real**2 + noisy_imag**2)
+            D_x_y = discriminator(noisy_mag, clean_mag)
             
-        #     noisy_audio_list = list(noisy.cpu().numpy()[:, :length])
-        #     Q_x_y = batch_pesq(clean_audio_list, noisy_audio_list)
-        #     L_N = criterion(D_x_y.flatten(), Q_x_y)
+            noisy_audio_list = list(noisy.cpu().numpy()[:, :length])
+            Q_x_y = batch_pesq(clean_audio_list, noisy_audio_list)
+            L_N = criterion(D_x_y.flatten(), Q_x_y)
             
-        #     sc_loss = compute_self_correcting_loss_weights(discriminator,
-        #                                                    optimizer_disc,
-        #                                                    L_C, L_E, L_N)
-        #     discrim_loss_metric = L + sc_loss
-        # else:
-        discrim_loss_metric = L + L_E
+            sc_loss = compute_self_correcting_loss_weights(discriminator,
+                                                            optimizer_disc,
+                                                            L_C, L_E, L_N)
+            discrim_loss_metric = L + sc_loss
+        else:
+            discrim_loss_metric = L + L_E
                               
         discrim_loss_metric.backward()
         if args.max_norm != 0.0:
@@ -492,7 +493,7 @@ def compute_compressed_mag(signal, n_fft, hop_length, window):
                                          window=window, onesided=True, 
                                          return_complex=True)
     mag = spec.abs()
-    mag = mag**0.3
+    # mag = mag**0.3
     return mag
 
 def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):
