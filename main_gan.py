@@ -103,7 +103,8 @@ def parse_option():
                         choices=['mae', 'l1', 'mse', 'l2', 'quantile'],
                         help='criterion used (default: l1)')
     
-    parser.add_argument('--compress', action='store_true',
+    parser.add_argument('--compress', default=False, 
+                        type=lambda x: (str(x).lower() in ['true','1', 'yes']),
                         help='Decide whether compress spectrograms or not')
 
     args, unparsed = parser.parse_known_args()
