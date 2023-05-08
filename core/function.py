@@ -253,6 +253,8 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                     config.LOSS_WEIGHTS[3] * gen_loss_GAN
                     
         loss.backward()
+        if args.max_norm != 0.0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
         optimizer.step()
         
         optimizer_disc.zero_grad()
@@ -288,6 +290,8 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             discrim_loss_metric = L + L_E
                               
         discrim_loss_metric.backward()
+        if args.max_norm != 0.0:
+            torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.max_norm)
         optimizer_disc.step()
         
         torch.cuda.synchronize()
