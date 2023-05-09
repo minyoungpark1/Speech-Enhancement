@@ -103,7 +103,7 @@ def parse_option():
                         choices=['mae', 'l1', 'mse', 'l2', 'quantile'],
                         help='criterion used (default: l1)')
     
-    parser.add_argument('--compress', default=True, 
+    parser.add_argument('--log_exp_mag', default=True, 
                         type=lambda x: (str(x).lower() in ['true','1', 'yes']),
                         help='Decide whether compress spectrograms or not')
 
@@ -143,6 +143,11 @@ def main_worker(gpu, ngpus_per_node, args, config):
     print("=> creating model '{}'".format(args.arch))
     model = TSCNet(num_channel=64, num_features=config.N_FFT// 2 + 1)
     discriminator = Discriminator(ndf=16)
+    
+    if args.arch == 'scp-gan':
+        args.log_exp_mag = True
+    else:
+        args.log_exp_mag = False
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')

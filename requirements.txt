@@ -1,0 +1,12 @@
+termcolor
+timm
+yacs
+tqdm
+librosa
+PyYAML
+pandas
+chardet
+matplotlib
+einops
+pesq
+numpy==1.23.5
