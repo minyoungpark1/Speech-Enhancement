@@ -149,3 +149,6 @@ if __name__ == '__main__':
 
 # CMGAN
 # pesq: 3.231      csig: 4.522     cbak: 3.804     covl: 3.958     ssnr: 10.34     stoi: 0.953
+
+# SCP-GAN
+# pesq: 3.163	 csig: 4.371	 cbak: 3.760	 covl: 3.838	 ssnr: 10.163	 stoi: 0.954
