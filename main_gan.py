@@ -143,8 +143,6 @@ def main_worker(gpu, ngpus_per_node, args, config):
     print("=> creating model '{}'".format(args.arch))
     model = TSCNet(num_channel=64, num_features=config.N_FFT// 2 + 1)
     discriminator = Discriminator(ndf=16)
-    # infer learning rate before changing batch size
-    args.lr = args.lr * args.batch_size / 256
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')

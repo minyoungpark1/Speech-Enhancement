@@ -176,9 +176,6 @@ def main_worker(gpu, ngpus_per_node, args, config):
             config.RESIDUAL_LAYERS,
             )
 
-    # infer learning rate before changing batch size
-    args.lr = args.lr * args.batch_size / 256
-
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
     elif args.distributed:
