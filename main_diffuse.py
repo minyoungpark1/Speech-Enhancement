@@ -249,8 +249,8 @@ def main_worker(gpu, ngpus_per_node, args, config):
                                      samples_per_frame=config.HOP_SAMPLES,
                                      crop_frames=config.CROP_FRAMES,
                                      get_spec=True, random_crop=False)
-    valid_dataset = VoicebankDataset(config.DATA.TRAIN_CLEAN_DIR,
-                                     config.DATA.TRAIN_NOISY_DIR,
+    valid_dataset = VoicebankDataset(config.DATA.TEST_CLEAN_DIR,
+                                     config.DATA.TEST_NOISY_DIR,
                                      config.DATA.NPY_DIR, 
                                      se=True, voicebank=True,
                                      samples_per_frame=config.HOP_SAMPLES,
