@@ -16,7 +16,7 @@ import torch.nn.functional as F
 import torch.distributed as dist
 
 from models.discriminator import batch_pesq
-from utils.utils import ProgressMeter
+from utils.utils import ProgressMeter, adjust_learning_rate
 
 
 def get_accuracy(pred, label):
@@ -45,8 +45,10 @@ def add_noise(audio, noisy, noise_schedule):
                      (1.0 - (1+m**2) *noise_scale)**0.5 * noise) / (1-noise_scale)**0.5
     return noisy_audio, combine_noise, t
 
-def train(train_loader, model, criterion, optimizer, lr_scheduler, scaler, 
-          logger, epoch, args, config):
+def train(train_loader, model, criterion, optimizer, scaler, logger, epoch, 
+          args, config):
+# def train(train_loader, model, criterion, optimizer, lr_scheduler, scaler, 
+#           logger, epoch, args, config):
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -71,8 +73,10 @@ def train(train_loader, model, criterion, optimizer, lr_scheduler, scaler,
         
         # measure data loading time
         data_time.update(time.time() - end)
-        lr_scheduler.step(epoch*iters_per_epoch+idx)
-        learning_rates.update(optimizer.param_groups[0]['lr'])
+        lr = adjust_learning_rate([optimizer], epoch + idx / iters_per_epoch, config)
+        learning_rates.update(lr)
+        # lr_scheduler.step(epoch*iters_per_epoch+idx)
+        # learning_rates.update(optimizer.param_groups[0]['lr'])
 
         if args.gpu is not None:
             signal = signal.cuda(args.gpu, non_blocking=True).float()
@@ -181,7 +185,9 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
 
 # TODO Merge train/valid functions of  GAN models in the future
 def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
-              lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
+              logger, epoch, args, config):
+# def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
+#               lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -205,9 +211,12 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         # measure data loading time
         data_time.update(time.time() - end)
         
-        lr_scheduler_G.step(epoch*iters_per_epoch+idx)
-        lr_scheduler_D.step(epoch*iters_per_epoch+idx)
-        learning_rates.update(optimizer.param_groups[0]['lr'])
+        # lr_scheduler_G.step(epoch*iters_per_epoch+idx)
+        # lr_scheduler_D.step(epoch*iters_per_epoch+idx)
+        # learning_rates.update(optimizer.param_groups[0]['lr'])
+        lr = adjust_learning_rate([optimizer, optimizer_disc], 
+                                  epoch + idx / iters_per_epoch, config)
+        learning_rates.update(lr)
         optimizer.zero_grad()
         
         clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
@@ -218,10 +227,6 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         est_mag = torch.sqrt(est_real**2 + est_imag**2)
         clean_mag = torch.sqrt(clean_real**2 + clean_imag**2)
         
-        predict_fake_metric = discriminator(clean_mag, est_mag)
-        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
-        loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
-        
         est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
         est_audio = torch.istft(est_spec_uncompress, config.N_FFT, 
                                 config.HOP_SAMPLES, window=hamming_window, onesided=True)
@@ -229,24 +234,37 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         if args.arch == 'scp-gan':
             ################### Consistency Preserving Network #################
             # Enhanced audio pipeline
-            est_prime_mag = compute_mag(est_audio, config.N_FFT, 
-                                        config.HOP_SAMPLES, hamming_window,
-                                        compress=args.compress)
+            est_prime_mag, \
+                est_prime_real,\
+                    est_prime_imag= compute_mag(est_audio, config.N_FFT, 
+                                                config.HOP_SAMPLES, hamming_window,
+                                                compress=args.compress)
             
             # Clean* audio pipeline
             clean_spec_uncompress = power_uncompress(clean_real, clean_imag).squeeze(1)
             clean_audio_prime = torch.istft(clean_spec_uncompress, config.N_FFT, 
                                     config.HOP_SAMPLES, window=hamming_window, 
                                     onesided=True)
-            clean_audio_prime_mag = compute_mag(clean_audio_prime, config.N_FFT, 
-                                                config.HOP_SAMPLES, hamming_window,
-                                                compress=args.compress)
+            clean_audio_prime_mag, \
+                clean_audio_prime_real, \
+                    clean_audio_prime_imag = compute_mag(clean_audio_prime, config.N_FFT, 
+                                                         config.HOP_SAMPLES, hamming_window,
+                                                         compress=args.compress)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
+            loss_ri = criterion(est_prime_real, clean_audio_prime_real) + \
+                criterion(est_prime_imag, clean_audio_prime_imag)
+            
+            predict_fake_metric = discriminator(clean_audio_prime_mag, est_prime_mag)
+            gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
         else:
             loss_mag = criterion(est_mag, clean_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean))
+            loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
+            
+            predict_fake_metric = discriminator(clean_mag, est_mag)
+            gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
         
         length = est_audio.size(-1)
         loss = config.LOSS_WEIGHTS[0] * loss_ri + \
@@ -268,7 +286,6 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         Q_Gx_y = batch_pesq(clean_audio_list, est_audio_list)
         D_y_y = discriminator(clean_mag, clean_mag)
         
-        L = criterion(D_y_y.flatten(), one_labels)
         L_E = criterion(D_Gx_y.flatten(), Q_Gx_y)
         
         if args.arch == 'scp-gan':
@@ -284,12 +301,12 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             Q_x_y = batch_pesq(clean_audio_list, noisy_audio_list)
             L_N = criterion(D_x_y.flatten(), Q_x_y)
             
-            sc_loss = compute_self_correcting_loss_weights(discriminator,
+            discrim_loss_metric = compute_self_correcting_loss_weights(discriminator,
                                                             optimizer_disc,
                                                             L_C, L_E, L_N)
-            discrim_loss_metric = L + sc_loss
         else:
-            discrim_loss_metric = L + L_E
+            L_C = criterion(D_y_y.flatten(), one_labels)
+            discrim_loss_metric = L_C + L_E
                               
         discrim_loss_metric.backward()
         if args.max_norm != 0.0:
@@ -350,10 +367,6 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         est_mag = torch.sqrt(est_real ** 2 + est_imag ** 2)
         clean_mag = torch.sqrt(clean_real ** 2 + clean_imag ** 2)
     
-        predict_fake_metric = discriminator(clean_mag, est_mag)
-        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
-        loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
-    
         est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
         est_audio = torch.istft(est_spec_uncompress, config.N_FFT, config.HOP_SAMPLES, 
                                 window=hamming_window, onesided=True)
@@ -361,24 +374,37 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         if args.arch == 'scp-gan':
             ################### Consistency Presering Network #################
             # Enhanced audio pipeline
-            est_prime_mag = compute_mag(est_audio, config.N_FFT, 
-                                        config.HOP_SAMPLES, hamming_window,
-                                        compress=args.compress)
+            est_prime_mag, \
+                est_prime_real,\
+                    est_prime_imag= compute_mag(est_audio, config.N_FFT, 
+                                                config.HOP_SAMPLES, hamming_window,
+                                                compress=args.compress)
             
             # Clean* audio pipeline
             clean_spec_uncompress = power_uncompress(clean_real, clean_imag).squeeze(1)
             clean_audio_prime = torch.istft(clean_spec_uncompress, config.N_FFT, 
                                     config.HOP_SAMPLES, window=hamming_window, 
                                     onesided=True)
-            clean_audio_prime_mag = compute_mag(clean_audio_prime, config.N_FFT, 
-                                                config.HOP_SAMPLES, hamming_window,
-                                                compress=args.compress)
+            clean_audio_prime_mag, \
+                clean_audio_prime_real, \
+                    clean_audio_prime_imag = compute_mag(clean_audio_prime, config.N_FFT, 
+                                                         config.HOP_SAMPLES, hamming_window,
+                                                         compress=args.compress)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
+            loss_ri = criterion(est_prime_real, clean_audio_prime_real) + \
+                criterion(est_prime_imag, clean_audio_prime_imag)
+            
+            predict_fake_metric = discriminator(clean_audio_prime_mag, est_prime_mag)
+            gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
         else:
             loss_mag = criterion(est_mag, clean_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean))
+            loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
+            
+            predict_fake_metric = discriminator(clean_mag, est_mag)
+            gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
             
         length = est_audio.size(-1)
         loss = config.LOSS_WEIGHTS[0] * loss_ri + \
@@ -393,11 +419,11 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         Q_Gx_y = batch_pesq(est_audio_list, clean_audio_list)
         D_y_y = discriminator(clean_mag, clean_mag)
         
-        L = criterion(D_y_y.flatten(), one_labels)
+        L_C = criterion(D_y_y.flatten(), one_labels)
         L_E = criterion(D_Gx_y.flatten(), Q_Gx_y)
         
         # Unable to compute validation self-correcting loss
-        discrim_loss_metric = L + L_E
+        discrim_loss_metric = L_C + L_E
     
         torch.cuda.synchronize()
         
@@ -460,7 +486,8 @@ def power_compress(x):
     spec = torch.complex(real, imag)
     mag = torch.abs(spec)
     phase = torch.angle(spec)
-    mag = mag**0.3
+    mag = torch.log1p(mag)
+    # mag = mag**0.3
     real_compress = mag * torch.cos(phase)
     imag_compress = mag * torch.sin(phase)
     
@@ -470,7 +497,8 @@ def power_uncompress(real, imag):
     spec = torch.complex(real, imag)
     mag = torch.abs(spec)
     phase = torch.angle(spec)
-    mag = mag**(1./0.3)
+    mag = torch.expm1(mag)
+    # mag = mag**(1./0.3)
     real_compress = mag * torch.cos(phase)
     imag_compress = mag * torch.sin(phase)
     
@@ -485,25 +513,26 @@ def compute_angle(x1, x2):
 
 def compute_mag(signal, n_fft, hop_length, window, compress=False):
     if compress:
-        spec = torch.stft(signal, n_fft, hop_length, 
-                                              window=window, onesided=True, 
-                                              return_complex=True)
-        mag = spec.abs()
-        mag = torch.log(1+mag)
-        # spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
+        # spec = torch.stft(signal, n_fft, hop_length, 
         #                                       window=window, onesided=True, 
-        #                                       return_complex=True))
-        # spec = power_compress(spec)
-        # real = spec[:, 0, :, :].unsqueeze(1)
-        # imag = spec[:, 1, :, :].unsqueeze(1)
-        # # mag = torch.sqrt(real**2 + imag**2)
+        #                                       return_complex=True)
+        # mag = spec.abs()
+        # mag = torch.log1p(mag)
+        spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
+                                              window=window, onesided=True, 
+                                              return_complex=True))
+        spec = power_compress(spec)
+        real = spec[:, 0, :, :].unsqueeze(1)
+        imag = spec[:, 1, :, :].unsqueeze(1)
+        mag = torch.sqrt(real**2 + imag**2)
         # mag = torch.sqrt(torch.clamp(real ** 2 + imag ** 2, min=1e-7))
+        return mag, real, imag
     else:
         spec = torch.stft(signal, n_fft, hop_length, 
                                              window=window, onesided=True, 
                                              return_complex=True)
         mag = spec.abs()
-    return mag
+        return mag, None, None
 
 def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):
     # resetting gradient back to zero

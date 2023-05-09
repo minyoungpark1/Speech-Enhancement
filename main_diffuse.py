@@ -62,7 +62,7 @@ def parse_option():
                         help='mini-batch size (default: 4096), this is the total '
                              'batch size of all GPUs on all nodes when '
                              'using Data Parallel or Distributed Data Parallel')
-    parser.add_argument('--lr', '--learning-rate', default=0.6, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                         metavar='LR', help='initial (base) learning rate', dest='lr')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                         help='momentum')
@@ -275,16 +275,16 @@ def main_worker(gpu, ngpus_per_node, args, config):
 
     criterion = build_criterion(args.criterion).cuda(args.gpu)
 
-    lr_scheduler = CosineLRScheduler(
-                optimizer,
-                t_initial=len(train_loader)*args.epochs//4,
-                cycle_decay=0.5,
-                lr_min=args.lr*1e-2,
-                warmup_lr_init=args.lr*1e-3,
-                warmup_t=10,
-                cycle_limit=4,
-                t_in_epochs=True,
-            )
+    # lr_scheduler = CosineLRScheduler(
+    #             optimizer,
+    #             t_initial=len(train_loader)*args.epochs//4,
+    #             cycle_decay=0.5,
+    #             lr_min=args.lr*1e-2,
+    #             warmup_lr_init=args.lr*1e-3,
+    #             warmup_t=10,
+    #             cycle_limit=4,
+    #             t_in_epochs=True,
+    #         )
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
@@ -292,7 +292,8 @@ def main_worker(gpu, ngpus_per_node, args, config):
             valid_sampler.set_epoch(epoch)
 
         # train & validate for one epoch
-        train_loss = train(train_loader, model, criterion, optimizer, lr_scheduler,
+        train_loss = train(train_loader, model, criterion, optimizer, 
+                           # lr_scheduler,
                            scaler, logger, epoch, args, config)
         valid_loss = validate(valid_loader, model, criterion, scaler, logger, epoch, args, config)
 

@@ -7,6 +7,7 @@ Created on Tue Mar 28 17:32:41 2023
 """
 import os
 import sys
+import math
 import torch
 import shutil
 import logging
@@ -71,3 +72,18 @@ def save_checkpoint(state, path, is_best, filename='checkpoint.pth.tar'):
     if is_best:
         shutil.copyfile(os.path.join(path, filename),
                         os.path.join(path, 'model_best.pth.tar'))
+
+
+def adjust_learning_rate(optimizers, epoch, config):
+    """Decays the learning rate with half-cycle cosine after warmup"""
+    cycle_length = config.TRAIN.SCHEDULER.EPOCHS//(config.TRAIN.SCHEDULER.CYCLE_LIMIT)
+    q, r = divmod(epoch, cycle_length)
+    if r < config.TRAIN.SCHEDULER.WARMUP_EPOCHS:
+        lr = 0.5**(q) * config.TRAIN.SCHEDULER.LR * r / config.TRAIN.SCHEDULER.WARMUP_EPOCHS
+    else:
+        lr = config.TRAIN.SCHEDULER.LR * (0.5**(q+1)) * (1. + math.cos(math.pi * (r - config.TRAIN.SCHEDULER.WARMUP_EPOCHS) / \
+                                            (cycle_length - config.TRAIN.SCHEDULER.WARMUP_EPOCHS)))
+    for optimizer in optimizers:
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+    return lr+config.TRAIN.SCHEDULER.MIN_LR

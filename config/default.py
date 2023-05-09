@@ -47,6 +47,13 @@ _C.TRAIN.OPTIMIZER.NAME = 'sgd'
 _C.TRAIN.CRITERION = CN()
 _C.TRAIN.CRITERION.NAME = 'l1'
 
+_C.TRAIN.SCHEDULER = CN()
+_C.TRAIN.SCHEDULER.LR = 1e-2
+_C.TRAIN.SCHEDULER.EPOCHS = 100
+_C.TRAIN.SCHEDULER.CYCLE_LIMIT = 4
+_C.TRAIN.SCHEDULER.WARMUP_EPOCHS = 4
+_C.TRAIN.SCHEDULER.MIN_LR = 1e-6
+
 _C.MODEL = CN()
 _C.MODEL.NAME = 'diffuse'
 _C.MODEL.RESUME = ''
@@ -103,6 +110,12 @@ def update_config(config, args):
     # set local rank for distributed training
     if _check_args('rank'):
         config.RANK = args.rank
+        
+    # Overwrite learning rate scheduler settings
+    if _check_args('lr'):
+        config.TRAIN.SCHEDULER.LR = args.lr
+    if _check_args('epochs'):
+    	config.TRAIN.SCHEDULER.EPOCHS = args.epochs
         
     config.NOISE_SCHEDULE = np.linspace(1e-4, 0.035, config.NOISE_SCHEDULE).tolist()
 
