@@ -255,15 +255,15 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             loss_ri = criterion(est_prime_real, clean_audio_prime_real) + \
                 criterion(est_prime_imag, clean_audio_prime_imag)
             
-            predict_fake_metric = discriminator(clean_audio_prime_mag, est_prime_mag)
-            gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
+            # predict_fake_metric = discriminator(clean_mag, est_mag)
+            # gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
         else:
             loss_mag = criterion(est_mag, clean_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean))
             loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
             
-            predict_fake_metric = discriminator(clean_mag, est_mag)
-            gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
+        predict_fake_metric = discriminator(clean_mag, est_mag)
+        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
         
         logger.info(f'{loss_ri:.4f}\t {loss_mag:.4f}\t {time_loss:.4f}\t {gen_loss_GAN:.4f}')
         length = est_audio.size(-1)
