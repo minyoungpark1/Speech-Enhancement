@@ -185,7 +185,7 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
 #               logger, epoch, args, config):
 def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
               lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
-
+    torch.autograd.set_detect_anomaly(True)
     batch_time = AverageMeter()
     data_time = AverageMeter()
     learning_rates = AverageMeter()
