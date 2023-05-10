@@ -261,16 +261,20 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             loss_mag = criterion(est_mag, clean_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean))
             loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
-            
-        predict_fake_metric = discriminator(clean_mag, est_mag)
-        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
         
-        logger.info(f'{loss_ri:.4f}\t {loss_mag:.4f}\t {time_loss:.4f}\t {gen_loss_GAN:.4f}')
-        length = est_audio.size(-1)
-        loss = config.LOSS_WEIGHTS[0] * loss_ri + \
-            config.LOSS_WEIGHTS[1] * loss_mag + \
-                config.LOSS_WEIGHTS[2] * time_loss + \
-                    config.LOSS_WEIGHTS[3] * gen_loss_GAN
+        
+        if epoch >= int(args.epochs*0.3):
+            predict_fake_metric = discriminator(clean_mag, est_mag)
+            gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
+            
+            loss = config.LOSS_WEIGHTS[0] * loss_ri + \
+                config.LOSS_WEIGHTS[1] * loss_mag + \
+                    config.LOSS_WEIGHTS[2] * time_loss + \
+                        config.LOSS_WEIGHTS[3] * gen_loss_GAN
+        else:
+            loss = config.LOSS_WEIGHTS[0] * loss_ri + \
+                config.LOSS_WEIGHTS[1] * loss_mag + \
+                    config.LOSS_WEIGHTS[2] * time_loss
                     
         loss.backward()
         if args.max_norm != 0.0:
@@ -280,6 +284,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         optimizer_disc.zero_grad()
         
         if epoch >= int(args.epochs*0.3):
+            length = est_audio.size(-1)
             est_audio_list = list(est_audio.detach().cpu().numpy())
             clean_audio_list = list(clean.cpu().numpy()[:, :length])
             
@@ -400,16 +405,13 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
             loss_ri = criterion(est_prime_real, clean_audio_prime_real) + \
                 criterion(est_prime_imag, clean_audio_prime_imag)
-            
-            predict_fake_metric = discriminator(clean_audio_prime_mag, est_prime_mag)
-            gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
         else:
             loss_mag = criterion(est_mag, clean_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean))
             loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
-            
-            predict_fake_metric = discriminator(clean_mag, est_mag)
-            gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
+        
+        predict_fake_metric = discriminator(clean_mag, est_mag)
+        gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
             
         length = est_audio.size(-1)
         loss = config.LOSS_WEIGHTS[0] * loss_ri + \
