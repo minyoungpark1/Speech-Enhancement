@@ -497,11 +497,10 @@ def power_compress(x, log_exp_mag=True, last_compress=False):
     spec = torch.complex(real, imag)
     mag = torch.abs(spec)
     phase = torch.angle(spec)
-    if last_compress:
-        if log_exp_mag:
-            mag = torch.log1p(mag)
-        else:
-            mag = mag**0.3
+    if log_exp_mag:
+        mag = torch.log1p(mag)
+    else:
+        mag = mag**0.3
     real_compress = mag * torch.cos(phase)
     imag_compress = mag * torch.sin(phase)
     
@@ -525,11 +524,16 @@ def compute_mag(signal, n_fft, hop_length, window, log_exp_mag_compress=False,
     spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
                                           window=window, onesided=True, 
                                           return_complex=True))
-    spec = power_compress(spec, log_exp_mag=log_exp_mag_compress, 
-                          last_compress=last_compress)
-    real = spec[:, 0, :, :].unsqueeze(1)
-    imag = spec[:, 1, :, :].unsqueeze(1)
-    mag = torch.sqrt(real**2 + imag**2)
+    if last_compress:
+        spec = power_compress(spec, log_exp_mag=log_exp_mag_compress, 
+                              last_compress=last_compress)
+        real = spec[:, 0, :, :].unsqueeze(1)
+        imag = spec[:, 1, :, :].unsqueeze(1)
+        mag = torch.sqrt(real**2 + imag**2)
+    else:
+        real = spec[..., 0].unsqueeze(1)
+        imag = spec[..., 1].unsqueeze(1)
+        mag = torch.sqrt(real**2 + imag**2)
     return mag, real, imag
 
 def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):
