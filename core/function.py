@@ -265,6 +265,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             predict_fake_metric = discriminator(clean_mag, est_mag)
             gen_loss_GAN = criterion(predict_fake_metric.flatten(), one_labels.float())
         
+        logger.info(f'{loss_ri:.4f}\t {loss_mag:.4f}\t {time_loss:.4f}\t {gen_loss_GAN:.4f}')
         length = est_audio.size(-1)
         loss = config.LOSS_WEIGHTS[0] * loss_ri + \
             config.LOSS_WEIGHTS[1] * loss_mag + \
