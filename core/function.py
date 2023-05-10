@@ -279,40 +279,43 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         
         optimizer_disc.zero_grad()
         
-        est_audio_list = list(est_audio.detach().cpu().numpy())
-        clean_audio_list = list(clean.cpu().numpy()[:, :length])
-        
-        D_Gx_y = discriminator(est_mag.detach(), clean_mag)
-        Q_Gx_y = batch_pesq(clean_audio_list, est_audio_list)
-        D_y_y = discriminator(clean_mag, clean_mag)
-        
-        L_E = criterion(D_Gx_y.flatten(), Q_Gx_y)
-        
-        if args.arch == 'scp-gan':
-            Q_y_y = batch_pesq(clean_audio_list, clean_audio_list)
-            L_C = criterion(D_y_y.flatten(), Q_y_y)
+        if epoch >= int(args.epochs*0.3):
+            est_audio_list = list(est_audio.detach().cpu().numpy())
+            clean_audio_list = list(clean.cpu().numpy()[:, :length])
             
-            noisy_real = noisy_spec[:,0,...].unsqueeze(1).permute(0, 1, 3, 2)
-            noisy_imag = noisy_spec[:,1,...].unsqueeze(1).permute(0, 1, 3, 2)
-            noisy_mag = torch.sqrt(noisy_real**2 + noisy_imag**2)
-            D_x_y = discriminator(noisy_mag, clean_mag)
+            D_Gx_y = discriminator(est_mag.detach(), clean_mag)
+            Q_Gx_y = batch_pesq(clean_audio_list, est_audio_list)
+            D_y_y = discriminator(clean_mag, clean_mag)
             
-            noisy_audio_list = list(noisy.cpu().numpy()[:, :length])
-            Q_x_y = batch_pesq(clean_audio_list, noisy_audio_list)
-            L_N = criterion(D_x_y.flatten(), Q_x_y)
+            L_E = criterion(D_Gx_y.flatten(), Q_Gx_y)
             
-            discrim_loss_metric = compute_self_correcting_loss_weights(discriminator,
-                                                            optimizer_disc,
-                                                            L_C, L_E, L_N)
+            if args.arch == 'scp-gan':
+                Q_y_y = batch_pesq(clean_audio_list, clean_audio_list)
+                L_C = criterion(D_y_y.flatten(), Q_y_y)
+                
+                noisy_real = noisy_spec[:,0,...].unsqueeze(1).permute(0, 1, 3, 2)
+                noisy_imag = noisy_spec[:,1,...].unsqueeze(1).permute(0, 1, 3, 2)
+                noisy_mag = torch.sqrt(noisy_real**2 + noisy_imag**2)
+                D_x_y = discriminator(noisy_mag, clean_mag)
+                
+                noisy_audio_list = list(noisy.cpu().numpy()[:, :length])
+                Q_x_y = batch_pesq(clean_audio_list, noisy_audio_list)
+                L_N = criterion(D_x_y.flatten(), Q_x_y)
+                
+                discrim_loss_metric = compute_self_correcting_loss_weights(discriminator,
+                                                                optimizer_disc,
+                                                                L_C, L_E, L_N)
+            else:
+                L_C = criterion(D_y_y.flatten(), one_labels)
+                discrim_loss_metric = L_C + L_E
+                                  
+            discrim_loss_metric.backward()
+            if args.max_norm != 0.0:
+                torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.max_norm)
+            optimizer_disc.step()
         else:
-            L_C = criterion(D_y_y.flatten(), one_labels)
-            discrim_loss_metric = L_C + L_E
-                              
-        discrim_loss_metric.backward()
-        if args.max_norm != 0.0:
-            torch.nn.utils.clip_grad_norm_(discriminator.parameters(), args.max_norm)
-        optimizer_disc.step()
-        
+            discrim_loss_metric = torch.tensor([0.])
+            
         torch.cuda.synchronize()
         
         gen_losses.update(loss.item(), clean.size(0))
