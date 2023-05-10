@@ -9,11 +9,8 @@ Created on Tue Mar 28 15:58:51 2023
 import time
 import torch
 import numpy as np
-import librosa
 import datetime
 from timm.utils import AverageMeter
-import torch.nn.functional as F
-import torch.distributed as dist
 
 from models.discriminator import batch_pesq
 from utils.utils import ProgressMeter, adjust_learning_rate
@@ -227,7 +224,8 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         est_mag = torch.sqrt(est_real**2 + est_imag**2)
         clean_mag = torch.sqrt(clean_real**2 + clean_imag**2)
         
-        est_spec_uncompress = power_uncompress(est_real, est_imag, args.log_exp_mag).squeeze(1)
+        est_spec_uncompress = power_uncompress(est_real, est_imag, 
+                                               log_exp_mag=args.log_exp_mag).squeeze(1)
         est_audio = torch.istft(est_spec_uncompress, config.N_FFT, 
                                 config.HOP_SAMPLES, window=hamming_window, onesided=True)
             
@@ -241,7 +239,8 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                                                 log_exp_mag_compress=args.log_exp_mag)
             
             # Clean* audio pipeline
-            clean_spec_uncompress = power_uncompress(clean_real, clean_imag).squeeze(1)
+            clean_spec_uncompress = power_uncompress(clean_real, clean_imag, 
+                                                     log_exp_mag=args.log_exp_mag).squeeze(1)
             clean_audio_prime = torch.istft(clean_spec_uncompress, config.N_FFT, 
                                     config.HOP_SAMPLES, window=hamming_window, 
                                     onesided=True)
