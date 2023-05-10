@@ -26,12 +26,8 @@ from models.generator import TSCNet
 from models.discriminator import Discriminator
 from datasets.voicebank_dataset import VoicebankDataset, Collator
 from core.function import train_gan, validate_gan
-# from core.function import train_cmgan, validate_cmgan
 from core.optimizer import build_optimizer
 from utils.utils import create_logger, save_checkpoint
-
-# os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-# os.environ['NCCL_BLOCKING_WAIT'] = "1"
 
 model_names = ['scp-gan', 'cmgan'
                ]
@@ -102,13 +98,6 @@ def parse_option():
     parser.add_argument('--criterion', default='l1', type=str,
                         choices=['mae', 'l1', 'mse', 'l2', 'quantile'],
                         help='criterion used (default: l1)')
-    
-    parser.add_argument('--log_exp_mag', default=True, 
-                        type=lambda x: (str(x).lower() in ['true','1', 'yes']),
-                        help='Decide whether compress spectrograms or not')
-    parser.add_argument('--last_compress', default=True, 
-                        type=lambda x: (str(x).lower() in ['true','1', 'yes']),
-                        help='Decide whether compress spectrograms at the last step')
 
     args, unparsed = parser.parse_known_args()
     
@@ -146,11 +135,6 @@ def main_worker(gpu, ngpus_per_node, args, config):
     print("=> creating model '{}'".format(args.arch))
     model = TSCNet(num_channel=64, num_features=config.N_FFT// 2 + 1)
     discriminator = Discriminator(ndf=16)
-    
-    # if args.arch == 'scp-gan':
-    #     args.log_exp_mag = True
-    # else:
-    #     args.log_exp_mag = False
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
