@@ -261,7 +261,6 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             loss_mag = criterion(est_mag, clean_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean))
             loss_ri = criterion(est_real, clean_real) + criterion(est_imag, clean_imag)
-            gen_loss_GAN = torch.tensor([0.])
         
         if epoch >= int(args.epochs*0.3):
             predict_fake_metric = discriminator(clean_mag, est_mag)
@@ -272,6 +271,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                     config.LOSS_WEIGHTS[2] * time_loss + \
                         config.LOSS_WEIGHTS[3] * gen_loss_GAN
         else:
+            gen_loss_GAN = torch.tensor([0.])
             loss = config.LOSS_WEIGHTS[0] * loss_ri + \
                 config.LOSS_WEIGHTS[1] * loss_mag + \
                     config.LOSS_WEIGHTS[2] * time_loss
