@@ -236,7 +236,8 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                 est_prime_real,\
                     est_prime_imag= compute_mag(est_audio, config.N_FFT, 
                                                 config.HOP_SAMPLES, hamming_window,
-                                                log_exp_mag_compress=args.log_exp_mag)
+                                                log_exp_mag_compress=args.log_exp_mag,
+                                                last_compress=args.last_compress)
             
             # Clean* audio pipeline
             clean_spec_uncompress = power_uncompress(clean_real, clean_imag, 
@@ -248,7 +249,8 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                 clean_audio_prime_real, \
                     clean_audio_prime_imag = compute_mag(clean_audio_prime, config.N_FFT, 
                                                          config.HOP_SAMPLES, hamming_window,
-                                                         log_exp_mag_compress=args.log_exp_mag)
+                                                         log_exp_mag_compress=args.log_exp_mag,
+                                                         last_compress=args.last_compress)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
@@ -387,7 +389,8 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
                 est_prime_real,\
                     est_prime_imag= compute_mag(est_audio, config.N_FFT, 
                                                 config.HOP_SAMPLES, hamming_window,
-                                                log_exp_mag_compress=args.log_exp_mag)
+                                                log_exp_mag_compress=args.log_exp_mag,
+                                                last_compress=args.last_compress)
             
             # Clean* audio pipeline
             clean_spec_uncompress = power_uncompress(clean_real, clean_imag, 
@@ -399,7 +402,8 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
                 clean_audio_prime_real, \
                     clean_audio_prime_imag = compute_mag(clean_audio_prime, config.N_FFT, 
                                                          config.HOP_SAMPLES, hamming_window,
-                                                         log_exp_mag_compress=args.log_exp_mag)
+                                                         log_exp_mag_compress=args.log_exp_mag,
+                                                         last_compress=args.last_compress)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
@@ -487,16 +491,17 @@ def batch_stft(batch, args, config):
     return clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
         one_labels, hamming_window
 
-def power_compress(x, log_exp_mag=True):
+def power_compress(x, log_exp_mag=True, last_compress=False):
     real = x[..., 0]
     imag = x[..., 1]
     spec = torch.complex(real, imag)
     mag = torch.abs(spec)
     phase = torch.angle(spec)
-    if log_exp_mag:
-        mag = torch.log1p(mag)
-    else:
-        mag = mag**0.3
+    if last_compress:
+        if log_exp_mag:
+            mag = torch.log1p(mag)
+        else:
+            mag = mag**0.3
     real_compress = mag * torch.cos(phase)
     imag_compress = mag * torch.sin(phase)
     
@@ -515,11 +520,13 @@ def power_uncompress(real, imag, log_exp_mag=True):
     
     return torch.complex(real_compress, imag_compress)
 
-def compute_mag(signal, n_fft, hop_length, window, log_exp_mag_compress=False):
+def compute_mag(signal, n_fft, hop_length, window, log_exp_mag_compress=False, 
+                last_compress=False):
     spec = torch.view_as_real(torch.stft(signal, n_fft, hop_length, 
                                           window=window, onesided=True, 
                                           return_complex=True))
-    spec = power_compress(spec,log_exp_mag=log_exp_mag_compress)
+    spec = power_compress(spec, log_exp_mag=log_exp_mag_compress, 
+                          last_compress=last_compress)
     real = spec[:, 0, :, :].unsqueeze(1)
     imag = spec[:, 1, :, :].unsqueeze(1)
     mag = torch.sqrt(real**2 + imag**2)

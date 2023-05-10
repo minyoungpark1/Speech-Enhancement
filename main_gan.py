@@ -106,6 +106,9 @@ def parse_option():
     parser.add_argument('--log_exp_mag', default=True, 
                         type=lambda x: (str(x).lower() in ['true','1', 'yes']),
                         help='Decide whether compress spectrograms or not')
+    parser.add_argument('--last_compress', default=True, 
+                        type=lambda x: (str(x).lower() in ['true','1', 'yes']),
+                        help='Decide whether compress spectrograms at the last step')
 
     args, unparsed = parser.parse_known_args()
     
