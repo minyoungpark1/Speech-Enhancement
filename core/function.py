@@ -292,9 +292,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                 Q_y_y = batch_pesq(clean_audio_list, clean_audio_list)
                 L_C = criterion(D_y_y.flatten(), Q_y_y)
                 
-                noisy_real = noisy_spec[:,0,...].unsqueeze(1).permute(0, 1, 3, 2)
-                noisy_imag = noisy_spec[:,1,...].unsqueeze(1).permute(0, 1, 3, 2)
-                noisy_mag = torch.sqrt(noisy_real**2 + noisy_imag**2)
+                noisy_mag = noisy_spec.abs().unsqueeze(1)
                 D_x_y = discriminator(noisy_mag, clean_mag)
                 
                 noisy_audio_list = list(noisy.cpu().numpy()[:, :length])
