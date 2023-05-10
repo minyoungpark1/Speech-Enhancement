@@ -257,26 +257,26 @@ def main_worker(gpu, ngpus_per_node, args, config):
         collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
                             crop_frames=config.CROP_FRAMES, get_spec=False).collate,)
 
-    # lr_scheduler_G = CosineLRScheduler(
-    #             optimizer,
-    #             t_initial=len(train_loader)*args.epochs//4,
-    #             cycle_decay=0.5,
-    #             lr_min=args.lr*1e-2,
-    #             warmup_lr_init=args.lr*1e-3,
-    #             warmup_t=10,
-    #             cycle_limit=4,
-    #             t_in_epochs=True,
-    #         )
-    # lr_scheduler_D = CosineLRScheduler(
-    #             optimizer_disc,
-    #             t_initial=len(train_loader)*args.epochs//4,
-    #             cycle_decay=0.5,
-    #             lr_min=2*args.lr*1e-2,
-    #             warmup_lr_init=2*args.lr*1e-3,
-    #             warmup_t=10,
-    #             cycle_limit=4,
-    #             t_in_epochs=True,
-    #         )
+    lr_scheduler_G = CosineLRScheduler(
+                optimizer,
+                t_initial=len(train_loader)*args.epochs//4,
+                cycle_decay=0.5,
+                lr_min=config.TRAIN.SCHEDULER.MIN_LR,
+                warmup_lr_init=config.TRAIN.SCHEDULER.MIN_LR,
+                warmup_t=10,
+                cycle_limit=config.TRAIN.SCHEDULER.CYCLE_LIMIT,
+                t_in_epochs=True,
+            )
+    lr_scheduler_D = CosineLRScheduler(
+                optimizer_disc,
+                t_initial=len(train_loader)*args.epochs//4,
+                cycle_decay=0.5,
+                lr_min=config.TRAIN.SCHEDULER.MIN_LR,
+                warmup_lr_init=config.TRAIN.SCHEDULER.MIN_LR,
+                warmup_t=10,
+                cycle_limit=config.TRAIN.SCHEDULER.CYCLE_LIMIT,
+                t_in_epochs=True,
+            )
     
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
@@ -287,7 +287,7 @@ def main_worker(gpu, ngpus_per_node, args, config):
         train_gen_loss, train_disc_loss = train_gan(train_loader, 
                                                       model, discriminator, criterion,
                                                       optimizer, optimizer_disc, 
-                                                      # lr_scheduler_G, lr_scheduler_D,
+                                                       lr_scheduler_G, lr_scheduler_D,
                                                       logger, epoch,  args, config)
         valid_gen_loss, valid_disc_loss = validate_gan(valid_loader,
                                                          model, discriminator, criterion,

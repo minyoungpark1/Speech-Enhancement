@@ -181,10 +181,10 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
     # return losses.avg, accuracies.avg
 
 # TODO Merge train/valid functions of  GAN models in the future
-def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
-              logger, epoch, args, config):
 # def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
-#               lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
+#               logger, epoch, args, config):
+def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
+              lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -208,12 +208,12 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         # measure data loading time
         data_time.update(time.time() - end)
         
-        # lr_scheduler_G.step(epoch*iters_per_epoch+idx)
-        # lr_scheduler_D.step(epoch*iters_per_epoch+idx)
-        # learning_rates.update(optimizer.param_groups[0]['lr'])
-        lr = adjust_learning_rate([optimizer, optimizer_disc], 
-                                  epoch + idx / iters_per_epoch, config)
-        learning_rates.update(lr)
+        lr_scheduler_G.step(epoch*iters_per_epoch+idx)
+        lr_scheduler_D.step(epoch*iters_per_epoch+idx)
+        learning_rates.update(optimizer.param_groups[0]['lr'])
+        # lr = adjust_learning_rate([optimizer, optimizer_disc], 
+        #                           epoch + idx / iters_per_epoch, config)
+        # learning_rates.update(lr)
         optimizer.zero_grad()
         
         clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
@@ -491,7 +491,7 @@ def batch_stft(batch, args, config):
     return clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
         one_labels, hamming_window
 
-def power_compress(x, log_exp_mag=True, last_compress=False):
+def power_compress(x, log_exp_mag=True):
     real = x[..., 0]
     imag = x[..., 1]
     spec = torch.complex(real, imag)
