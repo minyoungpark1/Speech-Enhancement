@@ -144,10 +144,10 @@ def main_worker(gpu, ngpus_per_node, args, config):
     model = TSCNet(num_channel=64, num_features=config.N_FFT// 2 + 1)
     discriminator = Discriminator(ndf=16)
     
-    if args.arch == 'scp-gan':
-        args.log_exp_mag = True
-    else:
-        args.log_exp_mag = False
+    # if args.arch == 'scp-gan':
+    #     args.log_exp_mag = True
+    # else:
+    #     args.log_exp_mag = False
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
