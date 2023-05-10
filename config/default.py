@@ -27,7 +27,7 @@ _C.DILATION_CYCLE_LENGTH = 10
 _C.NOISE_SCHEDULE = 50
 _C.INFERENCE_NOISE_SCHEDULE = [0.0001, 0.001, 0.01, 0.05, 0.2, 0.35]
 
-_C.LOSS_WEIGHTS = [0.03, 0.07, 0.02, 1]
+_C.LOSS_WEIGHTS = [0.1, 0.9, 0.2, 0.05]
 
 # Dataset settings
 # -----------------------------------------------------------------------------
