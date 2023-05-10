@@ -269,7 +269,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             loss = config.LOSS_WEIGHTS[0] * loss_ri + \
                 config.LOSS_WEIGHTS[1] * loss_mag + \
                     config.LOSS_WEIGHTS[2] * time_loss
-        logger.info(f'{loss_ri.item():.4f}\t {loss_mag.item():.4f}\t {time_loss.item():.4f}\t {gen_loss_GAN.item():.4f}')
+        # logger.info(f'{loss_ri.item():.4f}\t {loss_mag.item():.4f}\t {time_loss.item():.4f}\t {gen_loss_GAN.item():.4f}')
         loss.backward()
         if args.max_norm != 0.0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)

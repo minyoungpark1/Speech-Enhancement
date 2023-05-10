@@ -16,14 +16,12 @@ from glob import glob
 from tqdm import tqdm
 from pathlib import PureWindowsPath, Path
 from collections import OrderedDict
-
 from argparse import ArgumentParser
 
 random.seed(23)
 
-from models.generator import TSCNet
-from core.function import power_compress, power_uncompress
 from config import get_config
+from models.generator import TSCNet
 from utils.compute_metrics import compute_metrics
 
 
@@ -66,7 +64,7 @@ def load_model(args, config, device=torch.device('cuda')):
 @torch.no_grad()
 def predict(model, config, noisy_signal, device=torch.device('cuda')):
     noisy = torch.tensor(noisy_signal).unsqueeze(0).to(device)
-    
+    hamming_window = torch.hamming_window(config.N_FFT).cuda()
     c = torch.sqrt(noisy.size(-1) / torch.sum((noisy ** 2.0), dim=-1))
     noisy = torch.transpose(noisy, 0, 1)
     noisy = torch.transpose(noisy * c, 0, 1)
@@ -76,18 +74,22 @@ def predict(model, config, noisy_signal, device=torch.device('cuda')):
     padded_len = frame_num * 100
     padding_len = padded_len - length
     noisy = torch.cat([noisy, noisy[:, :padding_len]], dim=-1)
-
-    noisy_spec = torch.view_as_real(torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES,
-                                                window=torch.hamming_window(config.N_FFT).cuda(), 
-                                                onesided=True, return_complex=True))
-    noisy_spec = power_compress(noisy_spec).permute(0, 1, 3, 2)
+    noisy_spec = torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES, window=hamming_window, 
+                            onesided=True, return_complex=True, normalized=True)
+    # noisy_spec = torch.view_as_real(torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES,
+    #                                             window=torch.hamming_window(config.N_FFT).cuda(), 
+    #                                             onesided=True, return_complex=True))
+    # noisy_spec = power_compress(noisy_spec).permute(0, 1, 3, 2)
     est_real, est_imag = model(noisy_spec)
     est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
-
-    est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
-    est_audio = torch.istft(est_spec_uncompress, config.N_FFT, config.HOP_SAMPLES,
-                            window=torch.hamming_window(config.N_FFT).cuda(),
-                            onesided=True)
+    # est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
+    # est_audio = torch.istft(est_spec_uncompress, config.N_FFT, config.HOP_SAMPLES,
+    #                         window=torch.hamming_window(config.N_FFT).cuda(),
+    #                         onesided=True)
+    est_complex = torch.complex(est_real, est_imag).squeeze(1)
+    est_audio = torch.istft(est_complex, config.N_FFT, 
+                            config.HOP_SAMPLES, window=hamming_window, 
+                            onesided=True, normalized=True)
     est_audio = est_audio / c
     est_audio = torch.flatten(est_audio)[:length].cpu().numpy()
     
