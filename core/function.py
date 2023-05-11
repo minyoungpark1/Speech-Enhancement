@@ -384,6 +384,7 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         if args.arch == 'scp-gan':
             ################### Consistency Presering Network #################
             # Enhanced audio pipeline
+            logger.info(f'{est_audio[:,:10].detach().cpu().numpy()}, {est_audio.shape}')
             est_prime_mag, \
                 est_prime_real,\
                     est_prime_imag= compressed_stft(est_audio, config.N_FFT, 
