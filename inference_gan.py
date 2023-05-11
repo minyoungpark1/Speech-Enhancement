@@ -22,7 +22,7 @@ random.seed(23)
 
 from config import get_config
 from models.generator import TSCNet
-from core.function import compressed_stft, uncompressed_istft
+from core.function import compressed_stft, uncompressed_istft, power_compress
 from utils.compute_metrics import compute_metrics
 
 
@@ -77,11 +77,11 @@ def predict(model, config, noisy_signal, device=torch.device('cuda')):
     noisy = torch.cat([noisy, noisy[:, :padding_len]], dim=-1)
     # noisy_spec = torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES, window=hamming_window, 
     #                         onesided=True, return_complex=True, normalized=True)
-    # noisy_spec = torch.view_as_real(torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES,
-    #                                             window=torch.hamming_window(config.N_FFT).cuda(), 
-    #                                             onesided=True, return_complex=True))
-    # noisy_spec = power_compress(noisy_spec).permute(0, 1, 3, 2)
-    noisy_spec, _, _ = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, hamming_window)
+    noisy_spec = torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES,
+                                                window=torch.hamming_window(config.N_FFT).cuda(), 
+                                                onesided=True, return_complex=True)
+    noisy_spec = power_compress(noisy_spec)
+    # noisy_spec, _, _ = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, hamming_window)
     
     est_real, est_imag = model(noisy_spec)
     est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
