@@ -81,7 +81,7 @@ def predict(model, config, noisy_signal, device=torch.device('cuda')):
     #                                             window=torch.hamming_window(config.N_FFT).cuda(), 
     #                                             onesided=True, return_complex=True))
     # noisy_spec = power_compress(noisy_spec).permute(0, 1, 3, 2)
-    noisy_spec = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, hamming_window)
+    noisy_spec, _, _ = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, hamming_window)
     
     est_real, est_imag = model(noisy_spec)
     est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
