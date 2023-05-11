@@ -467,7 +467,8 @@ def power_compress(spec):
     # imag_compress = mag * torch.sin(phase)
     # return torch.complex(real_compress, imag_compress)
     # return spec.pow(0.3)
-    return spec.pow(0.4)
+    # return spec.pow(0.4)
+    return spec.sqrt()
 
 def power_uncompress(spec):
     # mag = spec.abs()
@@ -477,7 +478,8 @@ def power_uncompress(spec):
     # imag_compress = mag * torch.sin(phase)
     # return torch.complex(real_compress, imag_compress)
     # return spec.pow(1/0.3)
-    return spec.pow(2.5)
+    # return spec.pow(2.5)
+    return spec.pow(2)
 
 def batch_stft(batch, args, config):
     clean = batch['audio']
