@@ -237,7 +237,6 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         if args.arch == 'scp-gan':
             ################### Consistency Preserving Network #################
             # Enhanced audio pipeline
-            logger.info(f'{est_audio[:,:10].detach().cpu().numpy()}, {est_audio.shape}')
             est_prime_mag, \
                 est_prime_real,\
                     est_prime_imag= compressed_stft(est_audio, config.N_FFT, 
@@ -385,7 +384,6 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         if args.arch == 'scp-gan':
             ################### Consistency Presering Network #################
             # Enhanced audio pipeline
-            logger.info(f'{est_audio[:,:10].detach().cpu().numpy()}, {est_audio.shape}')
             est_prime_mag, \
                 est_prime_real,\
                     est_prime_imag= compressed_stft(est_audio, config.N_FFT, 
@@ -468,7 +466,7 @@ def power_compress(spec):
     # real_compress = mag * torch.cos(phase)
     # imag_compress = mag * torch.sin(phase)
     # return torch.complex(real_compress, imag_compress)
-    return spec.pow(0.3)+1e-16
+    return (spec+1e-16).pow(0.3)
     # return spec.pow(0.4)
     # return spec.sqrt()
 
