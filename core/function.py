@@ -181,10 +181,10 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
     # return losses.avg, accuracies.avg
 
 # TODO Merge train/valid functions of  GAN models in the future
-# def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
-#               logger, epoch, args, config):
 def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
-              lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
+              logger, epoch, args, config):
+# def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
+#               lr_scheduler_G, lr_scheduler_D, logger, epoch, args, config):
     if args.debug:
         torch.autograd.set_detect_anomaly(True)
     batch_time = AverageMeter()
@@ -209,12 +209,12 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         # measure data loading time
         data_time.update(time.time() - end)
         
-        lr_scheduler_G.step(epoch*iters_per_epoch+idx)
-        lr_scheduler_D.step(epoch*iters_per_epoch+idx)
-        learning_rates.update(optimizer.param_groups[0]['lr'])
-        # lr = adjust_learning_rate([optimizer, optimizer_disc], 
-        #                           epoch + idx / iters_per_epoch, config)
-        # learning_rates.update(lr)
+        # lr_scheduler_G.step(epoch*iters_per_epoch+idx)
+        # lr_scheduler_D.step(epoch*iters_per_epoch+idx)
+        # learning_rates.update(optimizer.param_groups[0]['lr'])
+        lr = adjust_learning_rate([optimizer, optimizer_disc], 
+                                  epoch + idx / iters_per_epoch, config)
+        learning_rates.update(lr)
         optimizer.zero_grad()
         
         clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
@@ -477,7 +477,7 @@ def power_uncompress(spec):
     # real_compress = mag * torch.cos(phase)
     # imag_compress = mag * torch.sin(phase)
     # return torch.complex(real_compress, imag_compress)
-    return spec.pow(1/0.3)
+    return spec.pow(1/0.3)-1e-16
     # return spec.pow(2.5)
     # return spec.pow(2)
 
