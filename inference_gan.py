@@ -22,6 +22,7 @@ random.seed(23)
 
 from config import get_config
 from models.generator import TSCNet
+from core.function import compressed_stft, uncompressed_istft
 from utils.compute_metrics import compute_metrics
 
 
@@ -74,12 +75,14 @@ def predict(model, config, noisy_signal, device=torch.device('cuda')):
     padded_len = frame_num * 100
     padding_len = padded_len - length
     noisy = torch.cat([noisy, noisy[:, :padding_len]], dim=-1)
-    noisy_spec = torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES, window=hamming_window, 
-                            onesided=True, return_complex=True, normalized=True)
+    # noisy_spec = torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES, window=hamming_window, 
+    #                         onesided=True, return_complex=True, normalized=True)
     # noisy_spec = torch.view_as_real(torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES,
     #                                             window=torch.hamming_window(config.N_FFT).cuda(), 
     #                                             onesided=True, return_complex=True))
     # noisy_spec = power_compress(noisy_spec).permute(0, 1, 3, 2)
+    noisy_spec = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, hamming_window)
+    
     est_real, est_imag = model(noisy_spec)
     est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
     # est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
@@ -87,9 +90,11 @@ def predict(model, config, noisy_signal, device=torch.device('cuda')):
     #                         window=torch.hamming_window(config.N_FFT).cuda(),
     #                         onesided=True)
     est_complex = torch.complex(est_real, est_imag).squeeze(1)
-    est_audio = torch.istft(est_complex, config.N_FFT, 
-                            config.HOP_SAMPLES, window=hamming_window, 
-                            onesided=True, normalized=True)
+    # est_audio = torch.istft(est_complex, config.N_FFT, 
+    #                         config.HOP_SAMPLES, window=hamming_window, 
+    #                         onesided=True, normalized=True)
+    est_audio = uncompressed_istft(est_complex, config.N_FFT, 
+                                   config.HOP_SAMPLES, hamming_window)
     est_audio = est_audio / c
     est_audio = torch.flatten(est_audio)[:length].cpu().numpy()
     
@@ -154,3 +159,6 @@ if __name__ == '__main__':
 
 # SCP-GAN
 # pesq: 3.163	 csig: 4.371	 cbak: 3.760	 covl: 3.838	 ssnr: 10.163	 stoi: 0.954
+
+# SCP-GAN PyTorch 2.0 last checkpoint
+# pesq: 2.673	 csig: 4.033	 cbak: 3.537	 covl: 3.401	 ssnr: 10.420	 stoi: 0.943
