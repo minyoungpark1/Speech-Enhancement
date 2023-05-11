@@ -91,6 +91,8 @@ def parse_option():
                              'N processes per node, which has N GPUs. This is the '
                              'fastest way to use PyTorch for either single node or '
                              'multi node data parallel training')
+    parser.add_argument('--debug', action='store_true',
+                        help='Use torch.autograd.set_detect_anomaly(True) for debudding')
     
     parser.add_argument('--optimizer', default='sgd', type=str,
                         choices=['sgd', 'adamw', 'lars', 'lamb'],

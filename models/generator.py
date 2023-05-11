@@ -145,7 +145,10 @@ class TSCNet(nn.Module):
         # noisy_phase = torch.angle(torch.complex(x[:, 0, :, :], x[:, 1, :, :])).unsqueeze(1)
         mag = x.abs().unsqueeze(1).permute(0, 1, 3, 2)
         noisy_phase = x.angle().unsqueeze(1).permute(0, 1, 3, 2)
-        x_in = torch.cat([mag, x.real.unsqueeze(1).permute(0, 1, 3, 2), x.imag.unsqueeze(1).permute(0, 1, 3, 2)], dim=1)
+        x_in = torch.cat([mag, 
+                          x.real.unsqueeze(1).permute(0, 1, 3, 2), 
+                          x.imag.unsqueeze(1).permute(0, 1, 3, 2)], 
+                         dim=1)
 
         out_1 = self.dense_encoder(x_in)
         out_2 = self.TSCB_1(out_1)
