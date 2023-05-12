@@ -105,9 +105,11 @@ def parse_option():
                         help='Length to crop audio signals in second (default: 1 sec)')
     parser.add_argument('--gen-first', action='store_true',
                         help='Train generator first (default False)')
+    parser.add_argument('--comp-type', default='norm', type=str,
+                        choices=['norm', 'log', 'pow'],
+                        help='Type of final spectrogram compression method (default: norm)')
 
     args, unparsed = parser.parse_known_args()
-    
     config = get_config(args)
 
     return args, config
