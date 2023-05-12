@@ -26,7 +26,7 @@ _C.RESIDUAL_CHANNELS = 64
 _C.DILATION_CYCLE_LENGTH = 10
 _C.NOISE_SCHEDULE = 50
 _C.INFERENCE_NOISE_SCHEDULE = [0.0001, 0.001, 0.01, 0.05, 0.2, 0.35]
-
+_C.CROP_LEN = 1
 _C.LOSS_WEIGHTS = [0.1, 0.9, 0.2, 0.05]
 
 # Dataset settings
@@ -118,7 +118,8 @@ def update_config(config, args):
     	config.TRAIN.SCHEDULER.EPOCHS = args.epochs
         
     config.NOISE_SCHEDULE = np.linspace(1e-4, 0.035, config.NOISE_SCHEDULE).tolist()
-
+    if _check_args('crop_len'):
+        config.CROP_LEN = args.crop_len
     # output folder
     config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
 

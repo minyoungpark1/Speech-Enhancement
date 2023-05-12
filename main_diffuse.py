@@ -92,12 +92,18 @@ def parse_option():
                              'N processes per node, which has N GPUs. This is the '
                              'fastest way to use PyTorch for either single node or '
                              'multi node data parallel training')
+    parser.add_argument('--debug', action='store_true',
+                        help='Use torch.autograd.set_detect_anomaly(True) for debudding')
+    
     parser.add_argument('--optimizer', default='sgd', type=str,
                         choices=['sgd', 'adamw', 'lars', 'lamb'],
                         help='optimizer used (default: sgd)')
     parser.add_argument('--criterion', default='l1', type=str,
                         choices=['mae', 'l1', 'mse', 'l2', 'quantile'],
                         help='criterion used (default: l1)')
+    
+    parser.add_argument('--crop-len', default=1, type=int,
+                        help='Length to crop audio signals in second (default: 1 sec)')
 
     args, unparsed = parser.parse_known_args()
     config = get_config(args)
@@ -241,19 +247,17 @@ def main_worker(gpu, ngpus_per_node, args, config):
     # Data loading code
     train_dataset = VoicebankDataset(config.DATA.TRAIN_CLEAN_DIR,
                                      config.DATA.TRAIN_NOISY_DIR,
-                                     config.DATA.NPY_DIR, 
-                                     se=True, voicebank=True,
                                      samples_per_frame=config.HOP_SAMPLES,
                                      crop_frames=config.CROP_FRAMES,
-                                     get_spec=True, random_crop=False)
+                                     random_crop=False)
     valid_dataset = VoicebankDataset(config.DATA.TEST_CLEAN_DIR,
                                      config.DATA.TEST_NOISY_DIR,
-                                     config.DATA.NPY_DIR, 
-                                     se=True, voicebank=True,
                                      samples_per_frame=config.HOP_SAMPLES,
                                      crop_frames=config.CROP_FRAMES,
-                                     get_spec=True, random_crop=False)
+                                     random_crop=False)
 
+    print('Audio signals cropped to {} seconds long'.format(config.CROP_LEN))
+    
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
         valid_sampler = torch.utils.data.distributed.DistributedSampler(valid_dataset)
@@ -263,12 +267,14 @@ def main_worker(gpu, ngpus_per_node, args, config):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=False, collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
-                            crop_frames=config.CROP_FRAMES).collate,)
+        num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=False,
+        collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
+                            crop_frames=config.CROP_FRAMES, crop_len=config.CROP_LEN).collate,)
     valid_loader = torch.utils.data.DataLoader(
-        valid_dataset, batch_size=args.batch_size, shuffle=(valid_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=valid_sampler, drop_last=False, collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
-                            crop_frames=config.CROP_FRAMES).collate,)
+        valid_dataset, batch_size=args.batch_size, shuffle=False,
+        num_workers=args.workers, pin_memory=True, sampler=valid_sampler, drop_last=False,
+        collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
+                            crop_frames=config.CROP_FRAMES, crop_len=config.CROP_LEN).collate,)
 
     criterion = build_criterion(args.criterion).cuda(args.gpu)
 

@@ -19,173 +19,101 @@ from torch.utils.data.distributed import DistributedSampler
 from models.discriminator import pesq_loss
 
 class VoicebankDataset(torch.utils.data.Dataset):
-    def __init__(self, wav_path, noisy_path, npy_dir, se, voicebank=False,
-                 samples_per_frame=100, crop_frames=160, get_spec=True, 
-                 random_crop=False,
-                 ):
+    def __init__(self, clean_path, noisy_path, samples_per_frame=100, 
+                 crop_frames=160, random_crop=False,):
         super().__init__()
-        self.wav_path = wav_path
+        self.clean_path = clean_path
         self.noisy_path = noisy_path
-        self.specnames = []
-        self.se = se
-        self.voicebank = voicebank
-        self.get_spec = get_spec
         self.random_crop = random_crop
-        npy_paths = [
-            # os.path.join(npy_dir, os.path.basename(wav_path)),
-            os.path.join(npy_dir, os.path.basename(noisy_path))
-            ]
-        for path in npy_paths:
-            self.specnames += glob(f'{path}/*.wav.spec.npy', recursive=True)
+        self.data_paths = glob(f'{noisy_path}/*.wav', recursive=True)
         self.samples_per_frame = samples_per_frame
         self.crop_frames = crop_frames
             
     def __len__(self):
-        return len(self.specnames)
+        return len(self.data_paths)
     
     def _get_data(self, idx):
-        spec_filename = self.specnames[idx]
-        if isinstance(Path(spec_filename), PureWindowsPath):
-            # spec_filename = str(PurePosixPath(spec_filename))
-            spec_filename = spec_filename.replace(os.sep, posixpath.sep)
-            # print(spec_filename)
-        if self.voicebank:
-            spec_path = "/".join(spec_filename.split("/")[:-1])
-            audio_filename = spec_filename.replace(spec_path, self.wav_path).replace(".spec.npy", "")
-            noisy_filename = spec_filename.replace(spec_path, self.noisy_path).replace(".spec.npy", "")
-        else:
-            spec_path = "/".join(spec_filename.split("/")[:-2])+"/"
-            if self.se:
-                audio_filename = spec_filename.replace(spec_path, self.wav_path).replace(".wav.spec.npy", ".Clean.wav")
-            else:
-                audio_filename = spec_filename.replace(spec_path, self.wav_path).replace(".spec.npy", "")
+        noisy_file_path = self.data_paths[idx]
+        if isinstance(Path(noisy_file_path), PureWindowsPath):
+            noisy_file_path = noisy_file_path.replace(os.sep, posixpath.sep)
+        clean_file_path = noisy_file_path.replace(self.noisy_path, self.clean_path)
+        signal, _ = librosa.load(clean_file_path, sr=16000)
+        noisy_signal, _ = librosa.load(noisy_file_path, sr=16000)  
         
-        # print(audio_filename)
-        signal, _ = librosa.load(audio_filename, sr=16000)
-        noisy_signal, _ = librosa.load(noisy_filename, sr=16000)  
-        
-        # signal, _ = torchaudio.load(audio_filename)
-        # noisy_signal, _ = torchaudio.load(noisy_filename)
-        # signal = signal.squeeze()
-        # noisy_signal = noisy_signal.squeeze()
-        
-        if self.get_spec:
-            spectrogram = np.load(spec_filename)
-            return signal, noisy_signal, spectrogram
-        else:
-            return signal, noisy_signal, None
+        return signal, noisy_signal
     
-    def random_cropping(self, signal, noisy_signal, spectrogram=None):
-        if spectrogram is not None:
-            start = random.randint(0, spectrogram.shape[1] - self.crop_frames)
-            end = start + self.crop_frames
-            spectrogram = spectrogram[:, start:end]
-          
-            start *= self.samples_per_frame
-            end *= self.samples_per_frame
-            signal = signal[start:end]
-            signal = np.pad(signal, (0, (end-start) - len(signal)), 
-                                     mode='constant')
-            noisy_signal = noisy_signal[start:end]
-            noisy_signal = np.pad(noisy_signal, (0, (end-start) - len(noisy_signal)), 
-                                  mode='constant')
-            return signal, noisy_signal, spectrogram
-        else:
-            L = self.crop_frames*self.samples_per_frame
-            start = random.randint(0, len(signal) - L)
-            end = start + L
-            signal = signal[start:end]
-            # signal = np.pad(signal, (0, (end-start) - len(signal)), 
-            #                          mode='constant')
-            noisy_signal = noisy_signal[start:end]
-            # noisy_signal = np.pad(noisy_signal, (0, (end-start) - len(noisy_signal)), 
-            #                       mode='constant')
-            return signal, noisy_signal, None
+    def random_cropping(self, signal, noisy_signal):
+        L = self.crop_frames*self.samples_per_frame
+        start = random.randint(0, len(signal) - L)
+        end = start + L
+        signal = signal[start:end]
+        noisy_signal = noisy_signal[start:end]
+        return signal, noisy_signal
             
-        
     def __getitem__(self, idx):
-        signal, noisy_signal, spectrogram = self._get_data(idx)
+        signal, noisy_signal = self._get_data(idx)
         if self.random_crop:
-            signal, noisy_signal, spectrogram = self.random_cropping(signal, 
-                                                                    noisy_signal, 
-                                                                    spectrogram)
-        
-        if self.get_spec:
-            # return signal, noisy_signal, torch.tensor(spectrogram)
-            return {
-                    'audio': signal,
-                    'noisy': noisy_signal,
-                    'spectrogram': spectrogram
+            signal, noisy_signal = self.random_cropping(signal, noisy_signal)
+        return {
+                'audio': signal,
+                'noisy': noisy_signal,
                 }
-        else:
-            # return signal, noisy_signal
-            return {
-                    'audio': signal,
-                    'noisy': noisy_signal,
-                    }
 
 class Collator:
-    def __init__(self, samples_per_frame, crop_frames, get_spec=True):
+    def __init__(self, samples_per_frame, crop_frames, crop_len=1):
         self.samples_per_frame = samples_per_frame
         self.crop_frames = crop_frames
-        self.get_spec = get_spec
         self.L = self.crop_frames*self.samples_per_frame
+        self.crop_len = self.L*crop_len
     
     def recrop(self, record, chances):
-        start = random.randint(0, len(record['audio']) - self.L)
-        end = start + self.L
-        
-        clean, noisy = record['audio'][start:end], record['noisy'][start:end]
+        clean = record['audio']
+        noisy = record['noisy']
+        length = len(record['audio'])
+        if length < self.crop_len:
+            units = self.crop_len // length
+            clean_final = []
+            noisy_final = []
+            for i in range(units):
+                clean_final.append(clean)
+                noisy_final.append(noisy)
+            clean_final.append(clean[: self.crop_len%length])
+            noisy_final.append(noisy[: self.crop_len%length])
+            clean = np.concatenate(clean_final, axis=-1)
+            noisy = np.concatenate(noisy_final, axis=-1)
+        else:
+            start = random.randint(0, length - self.crop_len)
+            end = start + self.crop_len
+            
+            clean, noisy = clean[start:end], noisy[start:end]
         if pesq_loss(clean, noisy) == -1:
             chances -= 1
             succeeded = 0
         else:
             succeeded = 1
-        return chances, succeeded, start, end
+        return chances, succeeded, clean, noisy
         
     def collate(self, minibatch):
         for record in minibatch:
-            if len(record['audio']) < self.L:
-                del record['audio']
-                del record['noisy']
-                if self.get_spec:
-                    del record['spectrogram']
-            
             chances, succeeded = 10, 0
             
             # Ten more chances to avoid getting a silent signal
             while chances > 0 and not succeeded:
-                chances, succeeded, start, end = self.recrop(record, chances)
+                chances, succeeded, clean, noisy = self.recrop(record, chances)
             
             if succeeded:
-                record['audio'], record['noisy'] = record['audio'][start:end], record['noisy'][start:end]
-                start = start//self.samples_per_frame
-                end = end//self.samples_per_frame
-                if self.get_spec:
-                    record['spectrogram'] = record['spectrogram'][:,start:end]
+                record['audio'], record['noisy'] = clean, noisy
             else:
                 del record['audio']
                 del record['noisy']
-                if self.get_spec:
-                    del record['spectrogram']
                 continue
-            
+            # print(record['audio'].shape, record['noisy'].shape)
         audio = np.stack([record['audio'] for record in minibatch if 'audio' in record])
         noisy = np.stack([record['noisy'] for record in minibatch if 'noisy' in record])
-        if self.get_spec:
-            spectrogram = np.stack([record['spectrogram'] for record \
-                                    in minibatch if 'spectrogram' in record])
         
-        if self.get_spec:
-            return {
-                'audio': torch.from_numpy(audio),
-                'noisy': torch.from_numpy(noisy),
-                'spectrogram': torch.from_numpy(spectrogram),
-                }
-        else:
-            return {
-                'audio': torch.from_numpy(audio),
-                'noisy': torch.from_numpy(noisy),
-                }
+        return {
+            'audio': torch.from_numpy(audio),
+            'noisy': torch.from_numpy(noisy),
+            }
             
         

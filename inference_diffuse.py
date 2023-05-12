@@ -162,9 +162,13 @@ def inference_schedule(model, config, fast_sampling=False):
 
 
 @torch.no_grad()
-def predict(model, config, spectrogram, noisy_signal, alpha, beta, alpha_cum, 
+def predict(model, config, noisy_signal, alpha, beta, alpha_cum, 
             sigmas, T, c1, c2, c3, delta, delta_bar, device=torch.device('cuda')):
     # Expand rank 2 tensors by adding a batch dimension.
+    hamming_window = torch.hamming_window(config.N_FFT).cuda()
+    noisy_signal = torch.from_numpy(noisy_signal).to(device)
+    spectrogram = torch.stft(noisy_signal, config.N_FFT, config.HOP_SAMPLES, 
+                             window=hamming_window, onesided=True, return_complex=True)
     if len(spectrogram.shape) == 2:
         spectrogram = spectrogram.unsqueeze(0)
         
@@ -174,7 +178,7 @@ def predict(model, config, spectrogram, noisy_signal, alpha, beta, alpha_cum,
     noise_scale = torch.from_numpy(alpha_cum**0.5).float().unsqueeze(1).to(device)
     noisy_audio = torch.zeros(spectrogram.shape[0], 
                               config.HOP_SAMPLES * spectrogram.shape[-1], device=device)
-    noisy_audio[:,:noisy_signal.shape[0]] = torch.from_numpy(noisy_signal).to(device)
+    noisy_audio[:,:noisy_signal.shape[0]] = noisy_signal
     audio = noisy_audio
     gamma = [0.2]
     for n in range(len(alpha) - 1, -1, -1):
@@ -183,7 +187,7 @@ def predict(model, config, spectrogram, noisy_signal, alpha, beta, alpha_cum,
                                      torch.tensor([T[n]], device=audio.device)).squeeze(1)
             audio = c1[n] * audio + c2[n] * noisy_audio - c3[n] * predicted_noise
             noise = torch.randn_like(audio)
-            newsigma= delta_bar[n]**0.5
+            newsigma = delta_bar[n]**0.5
             audio += newsigma * noise
         else:
             predicted_noise =  model(audio, spectrogram, 
@@ -198,37 +202,29 @@ def predict(model, config, spectrogram, noisy_signal, alpha, beta, alpha_cum,
 def main():
     args, config = parse_option()
     
-    specnames = []
-    npy_paths = [
-        os.path.join(config.DATA.NPY_DIR, os.path.basename(config.DATA.TEST_NOISY_DIR))
-        ]
-    for path in npy_paths:
-        specnames += glob(f'{path}/*.wav.spec.npy', recursive=True)
-
+    data_paths = glob(f'{config.DATA.TEST_NOISY_DIR}/*.wav', recursive=True)
+    num = len(data_paths)
     model = load_model(args, config)
     print(args.fast)
     alpha, beta, alpha_cum, sigmas, T, c1, c2, c3, \
         delta, delta_bar = inference_schedule(model, config, fast_sampling=args.fast)
     
-    num = len(specnames)
     metrics_total = np.zeros(6)
     
-    for i, spec in tqdm(enumerate(specnames)):
-        if isinstance(Path(spec), PureWindowsPath):
-            spec = spec.replace(os.sep, posixpath.sep)
+    for i, noisy_file_path in tqdm(enumerate(data_paths)):
+        if isinstance(Path(noisy_file_path), PureWindowsPath):
+            noisy_file_path = noisy_file_path.replace(os.sep, posixpath.sep)
         if i == 0:
-            output_path = Path(os.path.join(args.output, spec.split("/")[-2]))
+            output_path = Path(os.path.join(args.output, noisy_file_path.split("/")[-2]))
             output_path.mkdir(parents=True, exist_ok=True)
-        spectrogram = torch.from_numpy(np.load(spec))
-        noisy_signal, _ = librosa.load(os.path.join(config.DATA.TEST_NOISY_DIR,
-                                                    spec.split("/")[-1].replace(".spec.npy","")),
-                                       sr=16000)
-        clean_signal, _ = librosa.load(os.path.join(config.DATA.TEST_CLEAN_DIR,
-                                                    spec.split("/")[-1].replace(".spec.npy","")),
-                                       sr=16000)
-
+        
+        clean_file_path = noisy_file_path.replace(config.DATA.TEST_NOISY_DIR, 
+                                                  config.DATA.TEST_CLEAN_DIR)
+        noisy_signal, _ = librosa.load(noisy_file_path, sr=16000)
+        clean_signal, _ = librosa.load(clean_file_path, sr=16000)
+        
         wlen = noisy_signal.shape[0]
-        audio = predict(model, config, spectrogram, noisy_signal, alpha, beta, 
+        audio = predict(model, config, noisy_signal, alpha, beta, 
                             alpha_cum, sigmas, T,c1, c2, c3, delta, delta_bar)
         audio = audio[:,:wlen]
         metrics = compute_metrics(clean_signal, torch.flatten(audio).cpu().numpy(), 16000, 0)
@@ -236,7 +232,7 @@ def main():
         metrics_total += metrics
 
         # audio = snr_process(audio,noisy_signal)
-        output_name = os.path.join(output_path, spec.split("/")[-1].replace(".spec.npy", ""))
+        output_name = os.path.join(output_path, noisy_file_path.split("/")[-1])
         torchaudio.save(output_name, audio.cpu(), sample_rate=16000)
 
     metrics_avg = metrics_total / num

@@ -100,6 +100,9 @@ def parse_option():
     parser.add_argument('--criterion', default='l1', type=str,
                         choices=['mae', 'l1', 'mse', 'l2'],
                         help='criterion used (default: l1)')
+    
+    parser.add_argument('--crop-len', default=1, type=int,
+                        help='Length to crop audio signals in second (default: 1 sec)')
 
     args, unparsed = parser.parse_known_args()
     
@@ -212,19 +215,17 @@ def main_worker(gpu, ngpus_per_node, args, config):
     # Data loading code
     train_dataset = VoicebankDataset(config.DATA.TRAIN_CLEAN_DIR,
                                      config.DATA.TRAIN_NOISY_DIR,
-                                     config.DATA.NPY_DIR, 
-                                     se=True, voicebank=True,
                                      samples_per_frame=config.HOP_SAMPLES,
                                      crop_frames=config.CROP_FRAMES,
-                                     get_spec=False, random_crop=False)
+                                     random_crop=False)
     valid_dataset = VoicebankDataset(config.DATA.TEST_CLEAN_DIR,
                                      config.DATA.TEST_NOISY_DIR,
-                                     config.DATA.NPY_DIR, 
-                                     se=True, voicebank=True,
                                      samples_per_frame=config.HOP_SAMPLES,
                                      crop_frames=config.CROP_FRAMES,
-                                     get_spec=False, random_crop=False)
-
+                                     random_crop=False)
+    
+    print('Audio signals cropped to {} seconds long'.format(config.CROP_LEN))
+    
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
         valid_sampler = torch.utils.data.distributed.DistributedSampler(valid_dataset)
@@ -234,14 +235,14 @@ def main_worker(gpu, ngpus_per_node, args, config):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True,
+        num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=False,
         collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
-                            crop_frames=config.CROP_FRAMES, get_spec=False).collate,)
+                            crop_frames=config.CROP_FRAMES, crop_len=config.CROP_LEN).collate,)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True, sampler=valid_sampler, drop_last=False,
         collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
-                            crop_frames=config.CROP_FRAMES, get_spec=False).collate,)
+                            crop_frames=config.CROP_FRAMES, crop_len=config.CROP_LEN).collate,)
 
     # lr_scheduler_G = CosineLRScheduler(
     #             optimizer,

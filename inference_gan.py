@@ -106,37 +106,29 @@ def predict(model, config, noisy_signal, device=torch.device('cuda')):
 def main():
     args, config = parse_option()
     
-    specnames = []
-    npy_paths = [
-        os.path.join(config.DATA.NPY_DIR, os.path.basename(config.DATA.TEST_NOISY_DIR))
-        ]
-    for path in npy_paths:
-        specnames += glob(f'{path}/*.wav.spec.npy', recursive=True)
-
+    data_paths = glob(f'{config.DATA.TEST_NOISY_DIR}/*.wav', recursive=True)
     model = load_model(args, config)
-    num = len(specnames)
+    num = len(data_paths)
     metrics_total = np.zeros(6)
 
-    for i, spec in tqdm(enumerate(specnames)):
-        if isinstance(Path(spec), PureWindowsPath):
-            spec = spec.replace(os.sep, posixpath.sep)
+    for i, noisy_file_path in tqdm(enumerate(data_paths)):
+        if isinstance(Path(noisy_file_path), PureWindowsPath):
+            noisy_file_path = noisy_file_path.replace(os.sep, posixpath.sep)
         if i == 0:
-            output_path = Path(os.path.join(args.output, spec.split("/")[-2]))
+            output_path = Path(os.path.join(args.output, noisy_file_path.split("/")[-2]))
             output_path.mkdir(parents=True, exist_ok=True)
-            
-        noisy_signal, _ = librosa.load(os.path.join(config.DATA.TEST_NOISY_DIR,
-                                                    spec.split("/")[-1].replace(".spec.npy","")),
-                                       sr=16000)
-        clean_signal, _ = librosa.load(os.path.join(config.DATA.TEST_CLEAN_DIR,
-                                                    spec.split("/")[-1].replace(".spec.npy","")),
-                                       sr=16000)
+        
+        clean_file_path = noisy_file_path.replace(config.DATA.TEST_NOISY_DIR, 
+                                                  config.DATA.TEST_CLEAN_DIR)
+        noisy_signal, _ = librosa.load(noisy_file_path, sr=16000)
+        clean_signal, _ = librosa.load(clean_file_path, sr=16000)
         
         audio = predict(model, config, noisy_signal)
         metrics = compute_metrics(clean_signal, audio, 16000, 0)
         metrics = np.array(metrics)
         metrics_total += metrics
 
-        output_name = os.path.join(output_path, spec.split("/")[-1].replace(".spec.npy", ""))
+        output_name = os.path.join(output_path, noisy_file_path.split("/")[-1])
         torchaudio.save(output_name, torch.tensor(audio).unsqueeze(0), sample_rate=16000)
         
     metrics_avg = metrics_total / num

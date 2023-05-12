@@ -66,7 +66,7 @@ def train(train_loader, model, criterion, optimizer, scaler, logger, epoch,
     for idx, batch in enumerate(train_loader):
         signal = batch['audio']
         noisy_signal = batch['noisy']
-        spectrogram = batch['spectrogram']
+        hamming_window = torch.hamming_window(config.N_FFT)
         
         # measure data loading time
         data_time.update(time.time() - end)
@@ -74,14 +74,16 @@ def train(train_loader, model, criterion, optimizer, scaler, logger, epoch,
         learning_rates.update(lr)
         # lr_scheduler.step(epoch*iters_per_epoch+idx)
         # learning_rates.update(optimizer.param_groups[0]['lr'])
-
+        
         if args.gpu is not None:
             signal = signal.cuda(args.gpu, non_blocking=True).float()
             noisy_signal = noisy_signal.cuda(args.gpu, non_blocking=True).float()
-            spectrogram = spectrogram.cuda(args.gpu, non_blocking=True).float()
-
+            hamming_window = hamming_window.cuda(args.gpu, non_blocking=True)
         # compute output
         with torch.cuda.amp.autocast(True):
+            spectrogram = torch.stft(noisy_signal, config.N_FFT, config.HOP_SAMPLES, 
+                                     window=hamming_window, onesided=True, 
+                                     return_complex=True)
             noisy_audio, combine_noise, t = add_noise(signal, noisy_signal,
                                                       config.NOISE_SCHEDULE)
             predicted = model(noisy_audio, spectrogram, t)
@@ -143,15 +145,18 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
     for idx, batch in enumerate(valid_loader):
         signal = batch['audio']
         noisy_signal = batch['noisy']
-        spectrogram = batch['spectrogram']
+        hamming_window = torch.hamming_window(config.N_FFT)
         
         if args.gpu is not None:
             signal = signal.cuda(args.gpu, non_blocking=True).float()
             noisy_signal = noisy_signal.cuda(args.gpu, non_blocking=True).float()
-            spectrogram = spectrogram.cuda(args.gpu, non_blocking=True).float()
+            hamming_window = hamming_window.cuda(args.gpu, non_blocking=True)
 
         # compute output
         with torch.cuda.amp.autocast(True):
+            spectrogram = torch.stft(noisy_signal, config.N_FFT, config.HOP_SAMPLES, 
+                                     window=hamming_window, onesided=True, 
+                                     return_complex=True)
             noisy_audio, combine_noise, t = add_noise(signal, noisy_signal,
                                                       config.NOISE_SCHEDULE)
             predicted = model(noisy_audio, spectrogram, t)
