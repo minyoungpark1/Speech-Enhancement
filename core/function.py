@@ -398,10 +398,17 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         if args.arch == 'scp-gan':
             ################### Consistency Presering Network #################
             # Enhanced audio pipeline
-            est_prime_mag, \
-                est_prime_real,\
-                    est_prime_imag= compressed_stft(est_audio, config.N_FFT, 
-                                                config.HOP_SAMPLES, hamming_window,)
+            # est_prime_mag, \
+            #     est_prime_real,\
+            #         est_prime_imag= compressed_stft(est_audio, config.N_FFT, 
+            #                                     config.HOP_SAMPLES, hamming_window,)
+            est_prime_spec = torch.stft(est_audio, config.N_FFT, config.HOP_SAMPLES, 
+                                        window=hamming_window, onesided=True, 
+                            return_complex=True, normalized=True)   
+                            # return_complex=True)
+            est_prime_mag = est_prime_spec.abs()
+            est_prime_real = est_prime_spec.real
+            est_prime_imag = est_prime_spec.imag
             # Clean* audio pipeline
             # clean_audio_prime = torch.istft(clean_spec, config.N_FFT, 
             #                         config.HOP_SAMPLES, window=hamming_window, 
@@ -409,11 +416,18 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
             
             clean_audio_prime = uncompressed_istft(clean_spec, config.N_FFT, 
                                     config.HOP_SAMPLES, hamming_window)
-            clean_audio_prime_mag, \
-                clean_audio_prime_real, \
-                    clean_audio_prime_imag = compressed_stft(clean_audio_prime, config.N_FFT, 
-                                                         config.HOP_SAMPLES, hamming_window,)
-                    
+            # clean_audio_prime_mag, \
+            #     clean_audio_prime_real, \
+            #         clean_audio_prime_imag = compressed_stft(clean_audio_prime, config.N_FFT, 
+            #                                              config.HOP_SAMPLES, hamming_window,)
+            est_prime_spec = torch.stft(clean_audio_prime, config.N_FFT, config.HOP_SAMPLES, 
+                                        window=hamming_window, onesided=True, 
+                            return_complex=True, normalized=True)   
+                            # return_complex=True)
+            clean_audio_prime_mag = est_prime_spec.abs()
+            clean_audio_prime_real = est_prime_spec.real
+            clean_audio_prime_imag = est_prime_spec.imag
+            
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
             loss_ri = criterion(est_prime_real, clean_audio_prime_real) + \
@@ -476,7 +490,7 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
 def power_compress(spec):
     mag = spec.abs()
     phase = spec.angle()
-    mag = mag**(1./0.3)
+    mag = mag**0.3
     real_compress = mag * torch.cos(phase)
     imag_compress = mag * torch.sin(phase)
     return torch.complex(real_compress, imag_compress)
@@ -494,7 +508,7 @@ def power_uncompress(spec):
     mag = spec.abs()
     phase = spec.angle()
     # mag = torch.expm1(mag)
-    mag = mag**0.3
+    mag = mag**(1./0.3)
     real_compress = mag * torch.cos(phase)
     imag_compress = mag * torch.sin(phase)
     return torch.complex(real_compress, imag_compress)
