@@ -291,7 +291,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             est_audio_list = list(est_audio.detach().cpu().numpy())
             clean_audio_list = list(clean.cpu().numpy()[:, :length])
             
-            D_Gx_y = discriminator(est_mag.detach(), clean_mag)
+            D_Gx_y = discriminator(clean_mag, est_mag.detach())
             Q_Gx_y = batch_pesq(clean_audio_list, est_audio_list)
             D_y_y = discriminator(clean_mag, clean_mag)
             
@@ -302,7 +302,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                 L_C = criterion(D_y_y.flatten(), Q_y_y)
                 
                 noisy_mag = noisy_spec.abs().unsqueeze(1)
-                D_x_y = discriminator(noisy_mag, clean_mag)
+                D_x_y = discriminator(clean_mag, noisy_mag)
                 
                 noisy_audio_list = list(noisy.cpu().numpy()[:, :length])
                 Q_x_y = batch_pesq(clean_audio_list, noisy_audio_list)
@@ -427,8 +427,8 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         est_audio_list = list(est_audio.detach().cpu().numpy())
         clean_audio_list = list(clean.cpu().numpy()[:, :length])
         
-        D_Gx_y = discriminator(est_mag.detach(), clean_mag)
-        Q_Gx_y = batch_pesq(est_audio_list, clean_audio_list)
+        D_Gx_y = discriminator(clean_mag, est_mag.detach())
+        Q_Gx_y = batch_pesq(clean_audio_list, est_audio_list)
         D_y_y = discriminator(clean_mag, clean_mag)
         
         L_C = criterion(D_y_y.flatten(), one_labels)
