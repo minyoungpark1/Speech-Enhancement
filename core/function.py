@@ -498,8 +498,11 @@ def batch_stft(batch, args, config):
     noisy, clean = torch.transpose(noisy, 0, 1), torch.transpose(clean, 0, 1)
     noisy, clean = torch.transpose(noisy * c, 0, 1), torch.transpose(clean * c, 0, 1)
     
-    noisy_spec, _, _ = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, 
-                                       hamming_window, comp_type='pow')
+    _, noisy_real, noisy_imag = compressed_stft(noisy, config.N_FFT, 
+                                                config.HOP_SAMPLES, 
+                                                hamming_window, 
+                                                comp_type='pow')
+    noisy_spec = torch.complex(noisy_real, noisy_imag)
     clean_spec, clean_real, clean_imag = compressed_stft(clean, config.N_FFT, 
                                                          config.HOP_SAMPLES, 
                                                          hamming_window,
