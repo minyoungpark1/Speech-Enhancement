@@ -5,4 +5,4 @@ DATA:
   TEST_NOISY_DIR: '../data/DS_10283_2791/noisy_testset_wav'
   NPY_DIR: '../data/npy_data'
 
-# LOSS_WEIGHTS: [0.3, 0.7, 0.25, 1]
+LOSS_WEIGHTS: [0.3, 0.7, 0.2, 0.05]
