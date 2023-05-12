@@ -460,24 +460,36 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
     return gen_losses.avg, disc_losses.avg
 
 def power_compress(spec):
+    mag = spec.abs()
+    phase = spec.angle()
+    mag = mag**(1./0.3)
+    real_compress = mag * torch.cos(phase)
+    imag_compress = mag * torch.sin(phase)
+    return torch.complex(real_compress, imag_compress)
     # mag = spec.abs()
     # phase = spec.angle()
     # mag = mag**0.3
     # real_compress = mag * torch.cos(phase)
     # imag_compress = mag * torch.sin(phase)
     # return torch.complex(real_compress, imag_compress)
-    return (spec+1e-16).pow(0.3)
+    # return (spec+1e-16).pow(0.3)
     # return spec.pow(0.4)
     # return spec.sqrt()
 
 def power_uncompress(spec):
+    mag = spec.abs()
+    phase = spec.angle()
+    mag = torch.expm1(mag)
+    real_compress = mag * torch.cos(phase)
+    imag_compress = mag * torch.sin(phase)
+    return torch.complex(real_compress, imag_compress)
     # mag = spec.abs()
     # phase = spec.angle()
     # mag = mag**(1./0.3)
     # real_compress = mag * torch.cos(phase)
     # imag_compress = mag * torch.sin(phase)
     # return torch.complex(real_compress, imag_compress)
-    return spec.pow(1/0.3)-1e-16
+    # return spec.pow(1/0.3)-1e-16
     # return spec.pow(2.5)
     # return spec.pow(2)
 
