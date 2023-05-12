@@ -154,3 +154,4 @@ if __name__ == '__main__':
 
 # SCP-GAN PyTorch 2.0 last checkpoint
 # pesq: 2.673	 csig: 4.033	 cbak: 3.537	 covl: 3.401	 ssnr: 10.420	 stoi: 0.943
+# pesq: 2.533	 csig: 3.827	 cbak: 3.459	 covl: 3.229	 ssnr: 10.185	 stoi: 0.948

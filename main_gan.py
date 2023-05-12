@@ -103,6 +103,8 @@ def parse_option():
     
     parser.add_argument('--crop-len', default=1, type=int,
                         help='Length to crop audio signals in second (default: 1 sec)')
+    parser.add_argument('--gen_first', action='store_true',
+                        help='Train generator first (default False)')
 
     args, unparsed = parser.parse_known_args()
     
