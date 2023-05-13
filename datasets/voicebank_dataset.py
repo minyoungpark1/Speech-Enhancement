@@ -25,7 +25,7 @@ class VoicebankDataset(torch.utils.data.Dataset):
         self.clean_path = clean_path
         self.noisy_path = noisy_path
         self.random_crop = random_crop
-        self.data_paths = glob(f'{noisy_path}/*.wav', recursive=True)
+        self.data_paths = sorted(glob(f'{noisy_path}/*.wav', recursive=True))
         self.samples_per_frame = samples_per_frame
         self.crop_frames = crop_frames
             

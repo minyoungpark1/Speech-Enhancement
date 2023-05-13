@@ -53,6 +53,10 @@ def parse_option():
                         help='Choose whether you will save the results or not')
     parser.add_argument('--validate-epochs', action='store_true',
                         help='Validate all epoch checkpoints')
+    parser.add_argument('--start', default=None, type=int,
+                        help='Start epoch to validate')
+    parser.add_argument('--end', default=None, type=int,
+                        help='End epoch to validate')
     
     parser.add_argument(
         "--opts",
@@ -239,14 +243,14 @@ def inference(args, config, model_path, data_paths):
 def main():
     args, config = parse_option()
     
-    data_paths = glob(f'{config.DATA.TEST_NOISY_DIR}/*.wav', recursive=True)
+    data_paths = sorted(glob(f'{config.DATA.TEST_NOISY_DIR}/*.wav', recursive=True))
     num = len(data_paths)
     
     if args.validate_epochs:
-        model_paths = sorted(glob(f'{args.model_path}/checkpoint*', recursive=True))
         best_pesq = 0
         best_epoch = 0
-        for model_path in model_paths:
+        for epoch in range(args.start, args.end):
+            model_path = os.path.join(args.model_path, 'checkpoint_{:04d}.pth.tar'.format(epoch))
             epoch = int(os.path.basename(model_path).split('.')[-3].split('_')[-1])
             metrics_total = inference(args, config, model_path, data_paths)
 
