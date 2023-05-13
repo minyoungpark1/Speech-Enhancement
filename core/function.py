@@ -700,7 +700,7 @@ def compute_self_correcting_loss_weights(logger, discriminator, optimizer_disc, 
     # tensor with enhanced gradients
     grad_E_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_E_list = torch.cat([grad.reshape(-1) for grad in grad_E_tensor], dim=0)
-    EdotE = torch.dot(grad_E_list, grad_E_list).item()
+    EdotE = torch.dot(grad_E_list, grad_E_list).item() + 1e-14
     
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
@@ -708,14 +708,14 @@ def compute_self_correcting_loss_weights(logger, discriminator, optimizer_disc, 
     # tensor with noisy gradients
     grad_N_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_N_list = torch.cat([grad.reshape(-1) for grad in grad_N_tensor], dim=0)
-    NdotN = torch.dot(grad_N_list, grad_N_list).item()
+    NdotN = torch.dot(grad_N_list, grad_N_list).item() + 1e-14
     
     # dot product between gradients
     CdotE = torch.dot(grad_C_list, grad_E_list).item()
     CdotN = torch.dot(grad_C_list, grad_N_list).item()
     EdotN = torch.dot(grad_E_list, grad_N_list).item()
     
-    logger.info(f'EdotE: {EdotE}\t NdotN: {NdotN}\t CdotE: {CdotE}\t\t CdotN: {CdotN}\t EdotN: {EdotN}')
+    # logger.info(f'EdotE: {EdotE}\t NdotN: {NdotN}\t CdotE: {CdotE}\t\t CdotN: {CdotN}\t EdotN: {EdotN}')
     
     if CdotE > 0:
         w_C, w_E = 1, 1
