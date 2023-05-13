@@ -145,7 +145,9 @@ class TSCNet(nn.Module):
             self.diffusion = True
             self.diffusion_embedding = DiffusionEmbedding(len(noise_schedule))
             self.diffusion_projection = nn.Linear(512, num_channel)
-
+        else:
+            self.diffusion = False
+            
     def forward(self, x, diffusion_step=None):
         mag = x.abs().unsqueeze(1).permute(0, 1, 3, 2)
         noisy_phase = x.angle().unsqueeze(1).permute(0, 1, 3, 2)
