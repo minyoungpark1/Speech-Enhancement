@@ -108,12 +108,11 @@ def train(train_loader, model, criterion, optimizer, scaler, logger, epoch,
 
         if idx % args.print_freq == 0:
             lr = optimizer.param_groups[0]['lr']
-            wd = optimizer.param_groups[0]['weight_decay']
             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
             etas = batch_time.avg * (iters_per_epoch - idx)
             logger.info(
                 f'Train: [{epoch}/{args.epochs}][{idx}/{iters_per_epoch}]\t'
-                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
+                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t'
                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                 f'loss {losses.val:.4f} ({losses.avg:.4f})\t'
                 f'mem {memory_used:.0f}MB')
@@ -326,12 +325,11 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
 
         if idx % args.print_freq == 0:
             lr = optimizer.param_groups[0]['lr']
-            wd = optimizer.param_groups[0]['weight_decay']
             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
             etas = batch_time.avg * (iters_per_epoch - idx)
             logger.info(
                 f'Train: [{epoch}/{args.epochs}][{idx}/{iters_per_epoch}]\t'
-                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
+                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t'
                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                 f'generator loss {gen_losses.val:.4f} ({gen_losses.avg:.4f})\t'
                 f'discriminator loss {disc_losses.val:.4f} ({disc_losses.avg:.4f})\t'
@@ -523,12 +521,11 @@ def train_tsc_diffusion(train_loader, model, criterion, optimizer, scaler,
 
         if idx % args.print_freq == 0:
             lr = optimizer.param_groups[0]['lr']
-            wd = optimizer.param_groups[0]['weight_decay']
             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
             etas = batch_time.avg * (iters_per_epoch - idx)
             logger.info(
                 f'Train: [{epoch}/{args.epochs}][{idx}/{iters_per_epoch}]\t'
-                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
+                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t'
                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                 f'loss {losses.val:.4f} ({losses.avg:.4f})\t'
                 f'mem {memory_used:.0f}MB')
@@ -692,16 +689,13 @@ def uncompressed_istft(spec, n_fft, hop_length, window, comp_type='pow'):
 def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
-
     L_C.backward(retain_graph=True)
-    
     # tensor with clean gradients
     grad_C_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
     grad_C_list = torch.cat([grad.reshape(-1) for grad in grad_C_tensor], dim=0)
     
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
-
     L_E.backward(retain_graph=True)
     # tensor with enhanced gradients
     grad_E_tensor = [param.grad.clone() for _, param in discriminator.named_parameters()]
@@ -720,7 +714,9 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
     CdotE = torch.dot(grad_C_list, grad_E_list).item()
     CdotN = torch.dot(grad_C_list, grad_N_list).item()
     EdotN = torch.dot(grad_E_list, grad_N_list).item()
-
+    
+    print(f'EdotE: {EdotE}\t NdotN: {NdotN}\t CdotE: {CdotE}\t\t CdotN: {CdotN}\t EdotN: {EdotN}')
+    
     if CdotE > 0:
         w_C, w_E = 1, 1
         if torch.dot(w_C*grad_C_list + w_E*grad_E_list, grad_N_list).item() > 0:
