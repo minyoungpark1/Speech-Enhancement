@@ -24,13 +24,14 @@ from timm.scheduler.cosine_lr import CosineLRScheduler
 
 from config import get_config
 from models.DiffuSE import DiffuSE
+from models.generator import TSCNet
 from datasets.voicebank_dataset import VoicebankDataset, Collator
-from core.function import train, validate
+from core.function import train, validate, train_tsc_diffusion, validate_tsc_diffusion
 from core.criterion import build_criterion
 from core.optimizer import build_optimizer
 from utils.utils import create_logger, save_checkpoint
 
-model_names = ['diffuse', 
+model_names = ['diffuse', 'tsc_diffuse'
                ]
 
 def parse_option():
@@ -181,7 +182,10 @@ def main_worker(gpu, ngpus_per_node, args, config):
             config.RESIDUAL_CHANNELS,
             config.RESIDUAL_LAYERS,
             )
-
+    elif args.arch.startswith('tsc'):
+        model = TSCNet(num_channel=64, num_features=config.N_FFT// 2 + 1,
+                       noise_schedule=config.NOISE_SCHEDULE)
+    
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
     elif args.distributed:
@@ -198,13 +202,13 @@ def main_worker(gpu, ngpus_per_node, args, config):
             # ourselves based on the total number of GPUs we have
             args.batch_size = int(args.batch_size / args.world_size)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu],
-            find_unused_parameters=True)
+            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu],)
+            # find_unused_parameters=True)
         else:
             model.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all
             # available GPUs if device_ids are not set
-            model = torch.nn.parallel.DistributedDataParallel(model, find_unused_parameters=True)
+            model = torch.nn.parallel.DistributedDataParallel(model)
     elif args.gpu is not None:
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
@@ -269,12 +273,14 @@ def main_worker(gpu, ngpus_per_node, args, config):
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=False,
         collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
-                            crop_frames=config.CROP_FRAMES, crop_len=config.CROP_LEN).collate,)
+                            crop_frames=config.CROP_FRAMES,
+                            crop_len=config.CROP_LEN).collate,)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True, sampler=valid_sampler, drop_last=False,
         collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
-                            crop_frames=config.CROP_FRAMES, crop_len=config.CROP_LEN).collate,)
+                            crop_frames=config.CROP_FRAMES,
+                            crop_len=config.CROP_LEN).collate,)
 
     criterion = build_criterion(args.criterion).cuda(args.gpu)
 
@@ -293,12 +299,21 @@ def main_worker(gpu, ngpus_per_node, args, config):
         if args.distributed:
             train_sampler.set_epoch(epoch)
             valid_sampler.set_epoch(epoch)
-
+        
+        if args.arch.startswith('diffuse'):
         # train & validate for one epoch
-        train_loss = train(train_loader, model, criterion, optimizer, 
-                           # lr_scheduler,
-                           scaler, logger, epoch, args, config)
-        valid_loss = validate(valid_loader, model, criterion, scaler, logger, epoch, args, config)
+            train_loss = train(train_loader, model, criterion, optimizer, 
+                               # lr_scheduler,
+                               scaler, logger, epoch, args, config)
+            valid_loss = validate(valid_loader, model, criterion, scaler, logger, 
+                                  epoch, args, config)
+        elif args.arch.startswith('tsc'):
+            train_loss = train_tsc_diffusion(train_loader, model, criterion,
+                                             optimizer, scaler, logger, epoch, 
+                                             args, config)
+            valid_loss = validate_tsc_diffusion(valid_loader, model, criterion, 
+                                                scaler, logger, epoch, args, 
+                                                config)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed \
                 and args.rank == 0): # only the first GPU saves checkpoint

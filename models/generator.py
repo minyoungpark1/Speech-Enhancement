@@ -1,7 +1,7 @@
 from models.conformer import ConformerBlock
-# from utils import *
 import torch.nn as nn
 import torch
+from models.DiffuSE import DiffusionEmbedding
 
 class DilatedDenseNet(nn.Module):
     def __init__(self, depth=4, in_channels=64):
@@ -57,10 +57,12 @@ class DenseEncoder(nn.Module):
 class TSCB(nn.Module):
     def __init__(self, num_channel=64):
         super(TSCB, self).__init__()
-        self.time_conformer = ConformerBlock(dim=num_channel, dim_head=num_channel//4, heads=4,
-                                             conv_kernel_size=31, attn_dropout=0.2, ff_dropout=0.2)
-        self.freq_conformer = ConformerBlock(dim=num_channel, dim_head=num_channel//4, heads=4,
-                                             conv_kernel_size=31, attn_dropout=0.2, ff_dropout=0.2)
+        self.time_conformer = ConformerBlock(dim=num_channel, dim_head=num_channel//4,
+                                             heads=4, conv_kernel_size=31, 
+                                             attn_dropout=0.2, ff_dropout=0.2)
+        self.freq_conformer = ConformerBlock(dim=num_channel, dim_head=num_channel//4,
+                                             heads=4, conv_kernel_size=31, 
+                                             attn_dropout=0.2, ff_dropout=0.2)
 
     def forward(self, x_in):
         b, c, t, f = x_in.size()
@@ -128,7 +130,7 @@ class ComplexDecoder(nn.Module):
 
 
 class TSCNet(nn.Module):
-    def __init__(self, num_channel=64, num_features=201):
+    def __init__(self, num_channel=64, num_features=201, noise_schedule=None):
         super(TSCNet, self).__init__()
         self.dense_encoder = DenseEncoder(in_channel=3, channels=num_channel)
 
@@ -139,22 +141,35 @@ class TSCNet(nn.Module):
 
         self.mask_decoder = MaskDecoder(num_features, num_channel=num_channel, out_channel=1)
         self.complex_decoder = ComplexDecoder(num_channel=num_channel)
+        if noise_schedule is not None:
+            self.diffusion = True
+            self.diffusion_embedding = DiffusionEmbedding(len(noise_schedule))
+            self.diffusion_projection = nn.Linear(512, num_channel)
 
-    def forward(self, x):
-        # mag = torch.sqrt(x[:, 0, :, :]**2 + x[:, 1, :, :]**2).unsqueeze(1)
-        # noisy_phase = torch.angle(torch.complex(x[:, 0, :, :], x[:, 1, :, :])).unsqueeze(1)
+    def forward(self, x, diffusion_step=None):
         mag = x.abs().unsqueeze(1).permute(0, 1, 3, 2)
         noisy_phase = x.angle().unsqueeze(1).permute(0, 1, 3, 2)
         x_in = torch.cat([mag, 
                           x.real.unsqueeze(1).permute(0, 1, 3, 2), 
                           x.imag.unsqueeze(1).permute(0, 1, 3, 2)], 
                          dim=1)
-
+        
         out_1 = self.dense_encoder(x_in)
-        out_2 = self.TSCB_1(out_1)
-        out_3 = self.TSCB_2(out_2)
-        out_4 = self.TSCB_3(out_3)
-        out_5 = self.TSCB_4(out_4)
+        
+        if self.diffusion:
+            diffusion_step = self.diffusion_embedding(diffusion_step)
+            diffusion_step = self.diffusion_projection(diffusion_step)
+            diffusion_step = diffusion_step[:,:,None,None]
+            
+            out_2 = self.TSCB_1(out_1+diffusion_step)
+            out_3 = self.TSCB_2(out_2+diffusion_step)
+            out_4 = self.TSCB_3(out_3+diffusion_step)
+            out_5 = self.TSCB_4(out_4+diffusion_step)
+        else:
+            out_2 = self.TSCB_1(out_1)
+            out_3 = self.TSCB_2(out_2)
+            out_4 = self.TSCB_3(out_3)
+            out_5 = self.TSCB_4(out_4)
 
         mask = self.mask_decoder(out_5)
         out_mag = mask * mag

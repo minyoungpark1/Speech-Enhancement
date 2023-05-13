@@ -37,6 +37,8 @@ from argparse import ArgumentParser
 random.seed(23)
 
 from models.DiffuSE import DiffuSE
+from models.generator import TSCNet
+from core.function import compressed_stft, uncompressed_istft
 from config import get_config
 from utils.compute_metrics import compute_metrics
 
@@ -57,6 +59,8 @@ def parse_option():
                         help='Start epoch to validate')
     parser.add_argument('--end', default=None, type=int,
                         help='End epoch to validate')
+    parser.add_argument('--gpu', default=0, type=int,
+                        help='GPU id to use.')
     
     parser.add_argument(
         "--opts",
@@ -73,16 +77,20 @@ def parse_option():
     return args, config
     
 
-def load_model(model_path, config, device=torch.device('cuda')):
-    model = DiffuSE(
-        config.DILATION_CYCLE_LENGTH,
-        config.HOP_SAMPLES,
-        config.N_SPECS,
-        config.NOISE_SCHEDULE,
-        config.RESIDUAL_CHANNELS,
-        config.RESIDUAL_LAYERS,
-        ).to(device)
-    
+def load_model(model_path, args, config, device=torch.device('cuda')):
+    if args.arch.startswith('diffuse'):
+        model = DiffuSE(
+            config.DILATION_CYCLE_LENGTH,
+            config.HOP_SAMPLES,
+            config.N_SPECS,
+            config.NOISE_SCHEDULE,
+            config.RESIDUAL_CHANNELS,
+            config.RESIDUAL_LAYERS,
+            )
+    elif args.arch.startswith('tsc'):
+        model = TSCNet(num_channel=64, num_features=config.N_FFT// 2 + 1,
+                       noise_schedule=config.NOISE_SCHEDULE)
+        
     checkpoint = torch.load(model_path, map_location=device)
     state_dict = checkpoint['state_dict']
     new_state_dict = OrderedDict()
@@ -171,10 +179,10 @@ def inference_schedule(model, config, fast_sampling=False):
 
 
 @torch.no_grad()
-def predict(model, config, noisy_signal, alpha, beta, alpha_cum, 
-            sigmas, T, c1, c2, c3, delta, delta_bar, device=torch.device('cuda')):
+def predict(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas, 
+            T, c1, c2, c3, delta, delta_bar, device=torch.device('cuda')):
     # Expand rank 2 tensors by adding a batch dimension.
-    hamming_window = torch.hamming_window(config.N_FFT).cuda()
+    hamming_window = torch.hamming_window(config.N_FFT).to(device)
     noisy_signal = torch.from_numpy(noisy_signal).to(device)
     spectrogram = torch.stft(noisy_signal, config.N_FFT, config.HOP_SAMPLES, 
                              window=hamming_window, onesided=True, return_complex=True)
@@ -207,8 +215,45 @@ def predict(model, config, noisy_signal, alpha, beta, alpha_cum,
             
     return audio
 
+
+@torch.no_grad()
+def predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas, 
+                T, c1, c2, c3, delta, delta_bar, device=torch.device('cuda')):
+    noisy = torch.tensor(noisy_signal).unsqueeze(0).to(device)
+    hamming_window = torch.hamming_window(config.N_FFT).to(device)
+    c = torch.sqrt(noisy.size(-1) / torch.sum((noisy ** 2.0), dim=-1))
+    noisy = torch.transpose(noisy, 0, 1)
+    noisy = torch.transpose(noisy * c, 0, 1)
+        
+    audio = noisy_audio = noisy
+    noisy_spec = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, 
+                                 hamming_window)
+    
+    gamma = [0.2]
+    for n in range(len(alpha) - 1, -1, -1):
+        if n > 0:
+            predicted_noise_spec = model(noisy_spec,
+                                         torch.tensor([T[n]], device=audio.device)).squeeze(1)
+            predicted_noise = uncompressed_istft(predicted_noise_spec, config.N_FFT, 
+                                                 config.HOP_SAMPLES, hamming_window)
+            audio = c1[n] * audio + c2[n] * noisy_audio - c3[n] * predicted_noise
+            noise = torch.randn_like(audio)
+            newsigma = delta_bar[n]**0.5
+            audio += newsigma * noise
+        else:
+            predicted_noise_spec = model(noisy_spec, 
+                                         torch.tensor([T[n]], device=audio.device)).squeeze(1)
+            predicted_noise = uncompressed_istft(predicted_noise_spec, config.N_FFT, 
+                                                 config.HOP_SAMPLES, hamming_window)
+            audio = c1[n] * audio - c3[n] * predicted_noise
+            audio = (1-gamma[n])*audio+gamma[n]*noisy_audio
+    audio = audio / c
+    
+    return audio
+
 def inference(args, config, model_path, data_paths):
-    model = load_model(model_path, config)
+    device = 'cuda:{}'.format(args.gpu)
+    model = load_model(model_path, args, config, device)
     alpha, beta, alpha_cum, sigmas, T, c1, c2, c3, \
         delta, delta_bar = inference_schedule(model, config, fast_sampling=args.fast)
     
@@ -227,8 +272,13 @@ def inference(args, config, model_path, data_paths):
         clean_signal, _ = librosa.load(clean_file_path, sr=16000)
         
         wlen = noisy_signal.shape[0]
-        audio = predict(model, config, noisy_signal, alpha, beta, 
-                            alpha_cum, sigmas, T,c1, c2, c3, delta, delta_bar)
+        if args.arch.startswith('diffuse'):
+            audio = predict(model, config, noisy_signal, alpha, beta, alpha_cum, 
+                            sigmas, T,c1, c2, c3, delta, delta_bar, device)
+        
+        elif args.arch.startswith('diffuse'):
+            audio = predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, 
+                                sigmas, T, c1, c2, c3, delta, delta_bar, device)
         audio = audio[:,:wlen]
         metrics = compute_metrics(clean_signal, torch.flatten(audio).cpu().numpy(), 16000, 0)
         metrics = np.array(metrics)

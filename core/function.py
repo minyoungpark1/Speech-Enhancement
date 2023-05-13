@@ -129,12 +129,10 @@ def train(train_loader, model, criterion, optimizer, scaler, logger, epoch,
 def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config):
     batch_time = AverageMeter()
     losses = AverageMeter()
-    # accuracies = AverageMeter()
 
     progress = ProgressMeter(
             len(valid_loader),
             [batch_time, losses,],
-            # [batch_time, losses, accuracies],
             prefix='Test: ')
 
     model.eval()
@@ -162,8 +160,6 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
             predicted = model(noisy_audio, spectrogram, t)
             loss = criterion(predicted.squeeze(1), combine_noise)
 
-        # acc = get_accuracy(output, target)
-
         losses.update(loss.item(), signal.size(0))
         # accuracies.update(acc.item(), target.size(0))
 
@@ -177,13 +173,11 @@ def validate(valid_loader, model, criterion, scaler, logger, epoch, args, config
                 f'Test: [{idx}/{len(valid_loader)}]\t'
                 f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                 f'Loss {losses.val:.4f} ({losses.avg:.4f})\t'
-                # f'Acc {accuracies.val:.3f} ({accuracies.avg:.3f})\t'
                 f'Mem {memory_used:.0f}MB')
 
             progress.display(idx)
 
     return losses.avg
-    # return losses.avg, accuracies.avg
 
 # TODO Merge train/valid functions of  GAN models in the future
 def train_gan(train_loader, model, discriminator, criterion, optimizer, optimizer_disc, 
@@ -238,23 +232,22 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         if args.arch == 'scp-gan':
             ################### Consistency Preserving Network #################
             # Enhanced audio pipeline
-            est_prime_mag, \
-                est_prime_real,\
-                    est_prime_imag= compressed_stft(est_audio, config.N_FFT, 
-                                                config.HOP_SAMPLES, hamming_window,
-                                                comp_type=args.comp_type)
+            est_prime_spec = compressed_stft(est_audio, config.N_FFT, 
+                                             config.HOP_SAMPLES, hamming_window,
+                                             comp_type=args.comp_type)
+            est_prime_mag, est_prime_real, \
+                est_prime_imag = disassemble_spectrogram(est_prime_spec)
             
             # Clean* audio pipeline
             clean_audio_prime = uncompressed_istft(clean_spec, config.N_FFT, 
                                     config.HOP_SAMPLES, hamming_window)
-            
-            clean_audio_prime_mag, \
-                clean_audio_prime_real, \
-                    clean_audio_prime_imag = compressed_stft(clean_audio_prime, 
-                                                             config.N_FFT, 
-                                                             config.HOP_SAMPLES, 
-                                                             hamming_window,
-                                                             comp_type=args.comp_type)
+            clean_audio_prime_spec = compressed_stft(clean_audio_prime, 
+                                                     config.N_FFT, 
+                                                     config.HOP_SAMPLES, 
+                                                     hamming_window,
+                                                     comp_type=args.comp_type)
+            clean_audio_prime_mag, clean_audio_prime_real, \
+                clean_audio_prime_imag = disassemble_spectrogram(clean_audio_prime_spec)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
@@ -383,22 +376,22 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         if args.arch == 'scp-gan':
             ################### Consistency Presering Network #################
             # Enhanced audio pipeline
-            est_prime_mag, \
-                est_prime_real,\
-                    est_prime_imag= compressed_stft(est_audio, config.N_FFT, 
-                                                config.HOP_SAMPLES, hamming_window,
-                                                comp_type=args.comp_type)
-                    
+            est_prime_spec = compressed_stft(est_audio, config.N_FFT, 
+                                             config.HOP_SAMPLES, hamming_window,
+                                             comp_type=args.comp_type)
+            est_prime_mag, est_prime_real, \
+                est_prime_imag = disassemble_spectrogram(est_prime_spec)
+            
             # Clean* audio pipeline
             clean_audio_prime = uncompressed_istft(clean_spec, config.N_FFT, 
                                     config.HOP_SAMPLES, hamming_window)
-            clean_audio_prime_mag, \
-                clean_audio_prime_real, \
-                    clean_audio_prime_imag = compressed_stft(clean_audio_prime, 
-                                                             config.N_FFT, 
-                                                             config.HOP_SAMPLES,
-                                                             hamming_window,
-                                                             comp_type=args.comp_type)
+            clean_audio_prime_spec = compressed_stft(clean_audio_prime, 
+                                                     config.N_FFT, 
+                                                     config.HOP_SAMPLES, 
+                                                     hamming_window,
+                                                     comp_type=args.comp_type)
+            clean_audio_prime_mag, clean_audio_prime_real, \
+                clean_audio_prime_imag = disassemble_spectrogram(clean_audio_prime_spec)
             
             loss_mag = criterion(est_prime_mag, clean_audio_prime_mag)
             time_loss = torch.mean(torch.abs(est_audio - clean_audio_prime))
@@ -459,6 +452,163 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
             
     return gen_losses.avg, disc_losses.avg
 
+def train_tsc_diffusion(train_loader, model, criterion, optimizer, scaler,
+                        logger, epoch, args, config):
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    learning_rates = AverageMeter()
+    losses = AverageMeter()
+
+    progress = ProgressMeter(
+        len(train_loader),
+        [batch_time, data_time, losses],
+        prefix="Epoch: [{}]".format(epoch))
+
+    model.train()
+
+    start = time.time()
+    end = time.time()
+    iters_per_epoch = len(train_loader)
+
+    for idx, batch in enumerate(train_loader):
+        clean, noisy = normalize_batch(batch, args)
+        hamming_window = torch.hamming_window(config.N_FFT)
+        if args.gpu is not None:
+            hamming_window = hamming_window.cuda(args.gpu, non_blocking=True)
+            
+        # measure data loading time
+        data_time.update(time.time() - end)
+        lr = adjust_learning_rate([optimizer], epoch + idx / iters_per_epoch, config)
+        learning_rates.update(lr)
+        
+        with torch.cuda.amp.autocast(True):
+            noisy_audio, combine_noise, t = add_noise(clean, noisy,
+                                                      config.NOISE_SCHEDULE)
+            noisy_spec = compressed_stft(noisy_audio, config.N_FFT,
+                                         config.HOP_SAMPLES, hamming_window)
+            combine_spec = compressed_stft(combine_noise, config.N_FFT,
+                                         config.HOP_SAMPLES, hamming_window)
+            combine_mag, combine_real, combine_imag = disassemble_spectrogram(combine_spec)
+            
+            est_real, est_imag = model(noisy_spec, t)
+            est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
+            est_complex = torch.complex(est_real, est_imag).squeeze(1)
+            
+            predicted = uncompressed_istft(est_complex, config.N_FFT, 
+                                               config.HOP_SAMPLES, hamming_window)
+            
+            loss_mag = criterion(est_complex.abs(), combine_mag)
+            time_loss = torch.mean(torch.abs(predicted - combine_noise))
+            loss_ri = criterion(est_real, combine_real) + criterion(est_imag, combine_imag)
+            loss = config.LOSS_WEIGHTS[0] * loss_ri + \
+                config.LOSS_WEIGHTS[1] * loss_mag + \
+                    config.LOSS_WEIGHTS[2] * time_loss
+
+        losses.update(loss.item(), clean.size(0))
+
+        # compute gradient and do SGD step
+        optimizer.zero_grad()
+        scaler.scale(loss).backward()
+
+        if args.max_norm != 0.0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
+
+        scaler.step(optimizer)
+        scaler.update()
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if idx % args.print_freq == 0:
+            lr = optimizer.param_groups[0]['lr']
+            wd = optimizer.param_groups[0]['weight_decay']
+            memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
+            etas = batch_time.avg * (iters_per_epoch - idx)
+            logger.info(
+                f'Train: [{epoch}/{args.epochs}][{idx}/{iters_per_epoch}]\t'
+                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
+                f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
+                f'loss {losses.val:.4f} ({losses.avg:.4f})\t'
+                f'mem {memory_used:.0f}MB')
+
+            progress.display(idx)
+
+    epoch_time = time.time() - start
+    logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
+
+    return losses.avg
+
+@torch.no_grad()
+def validate_tsc_diffusion(valid_loader, model, criterion, scaler, logger, 
+                           epoch, args, config):
+    batch_time = AverageMeter()
+    losses = AverageMeter()
+    # accuracies = AverageMeter()
+
+    progress = ProgressMeter(
+            len(valid_loader),
+            [batch_time, losses,],
+            # [batch_time, losses, accuracies],
+            prefix='Test: ')
+
+    model.eval()
+
+    end = time.time()
+
+    # with torch.no_grad():
+    for idx, batch in enumerate(valid_loader):
+        clean, noisy = normalize_batch(batch, args)
+        hamming_window = torch.hamming_window(config.N_FFT)
+        if args.gpu is not None:
+            hamming_window = hamming_window.cuda(args.gpu, non_blocking=True)
+
+        # compute output
+        
+        with torch.cuda.amp.autocast(True):
+            noisy_audio, combine_noise, t = add_noise(clean, noisy,
+                                                      config.NOISE_SCHEDULE)
+            noisy_spec = compressed_stft(noisy_audio, config.N_FFT,
+                                         config.HOP_SAMPLES, hamming_window)
+            combine_spec = compressed_stft(combine_noise, config.N_FFT,
+                                         config.HOP_SAMPLES, hamming_window)
+            combine_mag, combine_real, combine_imag = disassemble_spectrogram(combine_spec)
+            
+            est_real, est_imag = model(noisy_spec, t)
+            est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
+            est_complex = torch.complex(est_real, est_imag).squeeze(1)
+            
+            predicted = uncompressed_istft(est_complex, config.N_FFT, 
+                                               config.HOP_SAMPLES, hamming_window)
+            
+            loss_mag = criterion(est_complex.abs(), combine_mag)
+            time_loss = torch.mean(torch.abs(predicted - combine_noise))
+            loss_ri = criterion(est_real, combine_real) + criterion(est_imag, combine_imag)
+            loss = config.LOSS_WEIGHTS[0] * loss_ri + \
+                config.LOSS_WEIGHTS[1] * loss_mag + \
+                    config.LOSS_WEIGHTS[2] * time_loss
+                    
+        losses.update(loss.item(), clean.size(0))
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if idx % args.print_freq == 0:
+            memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
+            logger.info(
+                f'Test: [{idx}/{len(valid_loader)}]\t'
+                f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                f'Loss {losses.val:.4f} ({losses.avg:.4f})\t'
+                # f'Acc {accuracies.val:.3f} ({accuracies.avg:.3f})\t'
+                f'Mem {memory_used:.0f}MB')
+
+            progress.display(idx)
+
+    return losses.avg
+
+
 def power_compress(spec, comp_type=None):
     mag = spec.abs()
     phase = spec.angle()
@@ -481,34 +631,40 @@ def power_uncompress(spec, comp_type=None):
     imag_compress = mag * torch.sin(phase)
     return torch.complex(real_compress, imag_compress)
 
-def batch_stft(batch, args, config):
+def normalize_batch(batch, args):
     clean = batch['audio']
     noisy = batch['noisy']
-    one_labels = torch.ones(len(clean))
-    hamming_window = torch.hamming_window(config.N_FFT)
     
     if args.gpu is not None:
         clean = clean.cuda(args.gpu, non_blocking=True)
         noisy = noisy.cuda(args.gpu, non_blocking=True)
-        one_labels = one_labels.cuda(args.gpu, non_blocking=True)
-        hamming_window = hamming_window.cuda(args.gpu, non_blocking=True)
         
     # Normalization
     c = torch.sqrt(noisy.size(-1) / torch.sum((noisy ** 2.0), dim=-1))
     noisy, clean = torch.transpose(noisy, 0, 1), torch.transpose(clean, 0, 1)
     noisy, clean = torch.transpose(noisy * c, 0, 1), torch.transpose(clean * c, 0, 1)
+    return clean, noisy
+
+def disassemble_spectrogram(spec):
+    return spec.abs(), spec.real, spec.imag
+
+def batch_stft(batch, args, config):
+    clean, noisy = normalize_batch(batch, args)
     
-    _, noisy_real, noisy_imag = compressed_stft(noisy, config.N_FFT, 
-                                                config.HOP_SAMPLES, 
-                                                hamming_window, 
-                                                comp_type='pow')
-    noisy_spec = torch.complex(noisy_real, noisy_imag)
-    clean_spec, clean_real, clean_imag = compressed_stft(clean, config.N_FFT, 
-                                                         config.HOP_SAMPLES, 
-                                                         hamming_window,
-                                                         comp_type='pow')
-    clean_real = clean_real.unsqueeze(1)
-    clean_imag = clean_imag.unsqueeze(1)
+    one_labels = torch.ones(len(clean))
+    hamming_window = torch.hamming_window(config.N_FFT)
+    
+    if args.gpu is not None:
+        one_labels = one_labels.cuda(args.gpu, non_blocking=True)
+        hamming_window = hamming_window.cuda(args.gpu, non_blocking=True)
+        
+    noisy_spec = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, 
+                                 hamming_window, comp_type='pow')
+    
+    clean_spec = compressed_stft(clean, config.N_FFT, config.HOP_SAMPLES, 
+                                 hamming_window, comp_type='pow')
+    clean_real = clean_spec.real.unsqueeze(1)
+    clean_imag = clean_spec.imag.unsqueeze(1)
     
     return clean, noisy, clean_spec, noisy_spec, clean_real, clean_imag, \
         one_labels, hamming_window
@@ -521,7 +677,7 @@ def compressed_stft(signal, n_fft, hop_length, window, comp_type='pow'):
     spec = torch.stft(signal, n_fft, hop_length, window=window, onesided=True, 
                     return_complex=True, normalized=normalized)
     spec = power_compress(spec, comp_type=comp_type)
-    return spec.abs(), spec.real, spec.imag
+    return spec
 
 def uncompressed_istft(spec, n_fft, hop_length, window, comp_type='pow'):
     spec = power_uncompress(spec, comp_type=comp_type)

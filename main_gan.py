@@ -241,12 +241,14 @@ def main_worker(gpu, ngpus_per_node, args, config):
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=False,
         collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
-                            crop_frames=config.CROP_FRAMES, crop_len=config.CROP_LEN).collate,)
+                            crop_frames=config.CROP_FRAMES,
+                            crop_len=config.CROP_LEN).collate,)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True, sampler=valid_sampler, drop_last=False,
         collate_fn=Collator(samples_per_frame=config.HOP_SAMPLES, 
-                            crop_frames=config.CROP_FRAMES, crop_len=config.CROP_LEN).collate,)
+                            crop_frames=config.CROP_FRAMES,
+                            crop_len=config.CROP_LEN).collate,)
 
     # lr_scheduler_G = CosineLRScheduler(
     #             optimizer,

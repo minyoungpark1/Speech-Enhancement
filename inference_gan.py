@@ -42,6 +42,8 @@ def parse_option():
                         help='Start epoch to validate')
     parser.add_argument('--end', default=None, type=int,
                         help='End epoch to validate')
+    parser.add_argument('--gpu', default=0, type=int,
+                        help='GPU id to use.')
     parser.add_argument(
         "--opts",
         help="Modify config options by adding 'KEY VALUE' pairs. ",
@@ -73,7 +75,7 @@ def load_model(model_path, config, device=torch.device('cuda')):
 @torch.no_grad()
 def predict(model, config, noisy_signal, device=torch.device('cuda')):
     noisy = torch.tensor(noisy_signal).unsqueeze(0).to(device)
-    hamming_window = torch.hamming_window(config.N_FFT).cuda()
+    hamming_window = torch.hamming_window(config.N_FFT).to(device)
     c = torch.sqrt(noisy.size(-1) / torch.sum((noisy ** 2.0), dim=-1))
     noisy = torch.transpose(noisy, 0, 1)
     noisy = torch.transpose(noisy * c, 0, 1)
@@ -84,23 +86,12 @@ def predict(model, config, noisy_signal, device=torch.device('cuda')):
     padding_len = padded_len - length
     noisy = torch.cat([noisy, noisy[:, :padding_len]], dim=-1)
     
-    noisy_spec = torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES,
-                                                window=torch.hamming_window(config.N_FFT).cuda(), 
-                                                onesided=True, return_complex=True)
-    noisy_spec = power_compress(noisy_spec, comp_type='pow')
-    
+    noisy_spec = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, hamming_window)
     est_real, est_imag = model(noisy_spec)
     est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
-    # est_spec_uncompress = power_uncompress(est_real, est_imag).squeeze(1)
-    # est_audio = torch.istft(est_spec_uncompress, config.N_FFT, config.HOP_SAMPLES,
-    #                         window=torch.hamming_window(config.N_FFT).cuda(),
-    #                         onesided=True)
     est_complex = torch.complex(est_real, est_imag).squeeze(1)
-    # est_audio = torch.istft(est_complex, config.N_FFT, 
-    #                         config.HOP_SAMPLES, window=hamming_window, 
-    #                         onesided=True, normalized=True)
     est_audio = uncompressed_istft(est_complex, config.N_FFT, config.HOP_SAMPLES, 
-                                   hamming_window, comp_type='pow')
+                                   hamming_window)
     est_audio = est_audio / c
     est_audio = torch.flatten(est_audio)[:length].cpu().numpy()
     
@@ -109,7 +100,8 @@ def predict(model, config, noisy_signal, device=torch.device('cuda')):
     return est_audio
 
 def inference(args, config, model_path, data_paths):
-    model = load_model(model_path, config)
+    device = 'cuda:{}'.format(args.gpu)
+    model = load_model(model_path, config, device)
     metrics_total = np.zeros(6)
 
     for i, noisy_file_path in tqdm(enumerate(data_paths)):
@@ -124,7 +116,7 @@ def inference(args, config, model_path, data_paths):
         noisy_signal, _ = librosa.load(noisy_file_path, sr=16000)
         clean_signal, _ = librosa.load(clean_file_path, sr=16000)
         
-        audio = predict(model, config, noisy_signal)
+        audio = predict(model, config, noisy_signal, device)
         metrics = compute_metrics(clean_signal, audio, 16000, 0)
         metrics = np.array(metrics)
         metrics_total += metrics
@@ -136,7 +128,6 @@ def inference(args, config, model_path, data_paths):
     
 def main():
     args, config = parse_option()
-    
     data_paths = sorted(glob(f'{config.DATA.TEST_NOISY_DIR}/*.wav', recursive=True))
     num = len(data_paths)
     

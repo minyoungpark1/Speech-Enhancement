@@ -99,7 +99,8 @@ class ResidualBlock(nn.Module):
         self.diffusion_projection = Linear(512, residual_channels)
         self.conditioner_projection = Conv1d(n_specs, 2 * residual_channels, 1)
         # self.output_projection = Conv1d(residual_channels, residual_channels, 1)
-        self.output_projection = nn.Sequential(Conv1d(residual_channels, residual_channels, 1),
+        self.output_projection = nn.Sequential(Conv1d(residual_channels, 
+                                                      residual_channels, 1),
                                                nn.GroupNorm(residual_channels//16, 
                                                             residual_channels))
         self.output_residual = Conv1d(residual_channels, residual_channels, 1)
