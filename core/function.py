@@ -517,7 +517,7 @@ def compressed_stft(signal, n_fft, hop_length, window, comp_type='pow'):
     if comp_type == 'norm':
         normalized = True
     else:
-        normalized = True
+        normalized = False
     spec = torch.stft(signal, n_fft, hop_length, window=window, onesided=True, 
                     return_complex=True, normalized=normalized)
     spec = power_compress(spec, comp_type=comp_type)
