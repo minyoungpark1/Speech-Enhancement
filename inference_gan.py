@@ -128,7 +128,7 @@ def inference(args, config, model_path, data_paths):
             output_name = os.path.join(output_path, noisy_file_path.split("/")[-1])
             torchaudio.save(output_name, torch.tensor(audio).unsqueeze(0), sample_rate=16000)
             
-        return metrics_total
+    return metrics_total
     
 def main():
     args, config = parse_option()
