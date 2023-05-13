@@ -79,13 +79,11 @@ def predict(model, config, noisy_signal, device=torch.device('cuda')):
     padded_len = frame_num * 100
     padding_len = padded_len - length
     noisy = torch.cat([noisy, noisy[:, :padding_len]], dim=-1)
-    # noisy_spec = torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES, window=hamming_window, 
-    #                         onesided=True, return_complex=True, normalized=True)
+    
     noisy_spec = torch.stft(noisy, config.N_FFT, config.HOP_SAMPLES,
                                                 window=torch.hamming_window(config.N_FFT).cuda(), 
                                                 onesided=True, return_complex=True)
-    noisy_spec = power_compress(noisy_spec)
-    # noisy_spec, _, _ = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, hamming_window)
+    noisy_spec = power_compress(noisy_spec, comp_type='pow')
     
     est_real, est_imag = model(noisy_spec)
     est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
@@ -97,8 +95,8 @@ def predict(model, config, noisy_signal, device=torch.device('cuda')):
     # est_audio = torch.istft(est_complex, config.N_FFT, 
     #                         config.HOP_SAMPLES, window=hamming_window, 
     #                         onesided=True, normalized=True)
-    est_audio = uncompressed_istft(est_complex, config.N_FFT, 
-                                   config.HOP_SAMPLES, hamming_window)
+    est_audio = uncompressed_istft(est_complex, config.N_FFT, config.HOP_SAMPLES, 
+                                   hamming_window, comp_type='pow')
     est_audio = est_audio / c
     est_audio = torch.flatten(est_audio)[:length].cpu().numpy()
     
