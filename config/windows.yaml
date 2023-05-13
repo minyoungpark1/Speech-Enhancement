@@ -3,4 +3,3 @@ DATA:
   TRAIN_NOISY_DIR: 'D:/data/DS_10283_2791/noisy_trainset_28spk_wav'
   TEST_CLEAN_DIR: 'D:/data/DS_10283_2791/clean_testset_wav'
   TEST_NOISY_DIR: 'D:/data/DS_10283_2791/noisy_testset_wav'
-  NPY_DIR: 'D:/data/npy_data'

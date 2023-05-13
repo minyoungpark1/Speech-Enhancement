@@ -36,7 +36,6 @@ _C.DATA.TRAIN_CLEAN_DIR =  'D:/data/DS_10283_2791/clean_trainset_28spk_wav'
 _C.DATA.TRAIN_NOISY_DIR = 'D:/data/DS_10283_2791/noisy_trainset_28spk_wav'
 _C.DATA.TEST_CLEAN_DIR =  'D:/data/DS_10283_2791/clean_testset_wav'
 _C.DATA.TEST_NOISY_DIR = 'D:/data/DS_10283_2791/noisy_testset_wav'
-_C.DATA.NPY_DIR = 'D:/data/npy_data'
 _C.DATA.BATCH_SIZE = 32
 
 _C.TRAIN = CN()
