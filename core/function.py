@@ -300,7 +300,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
                 Q_x_y = batch_pesq(clean_audio_list, noisy_audio_list)
                 L_N = criterion(D_x_y.flatten(), Q_x_y)
                 
-                discrim_loss_metric = compute_self_correcting_loss_weights(discriminator,
+                discrim_loss_metric = compute_self_correcting_loss_weights(logger, discriminator,
                                                                 optimizer_disc,
                                                                 L_C, L_E, L_N)
             else:
@@ -686,7 +686,7 @@ def uncompressed_istft(spec, n_fft, hop_length, window, comp_type='pow'):
                          normalized=normalized)
     return signal
 
-def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E, L_N):
+def compute_self_correcting_loss_weights(logger, discriminator, optimizer_disc, L_C, L_E, L_N):
     # resetting gradient back to zero
     optimizer_disc.zero_grad()
     L_C.backward(retain_graph=True)
@@ -715,7 +715,7 @@ def compute_self_correcting_loss_weights(discriminator, optimizer_disc, L_C, L_E
     CdotN = torch.dot(grad_C_list, grad_N_list).item()
     EdotN = torch.dot(grad_E_list, grad_N_list).item()
     
-    print(f'EdotE: {EdotE}\t NdotN: {NdotN}\t CdotE: {CdotE}\t\t CdotN: {CdotN}\t EdotN: {EdotN}')
+    logger.info(f'EdotE: {EdotE}\t NdotN: {NdotN}\t CdotE: {CdotE}\t\t CdotN: {CdotN}\t EdotN: {EdotN}')
     
     if CdotE > 0:
         w_C, w_E = 1, 1
