@@ -94,10 +94,10 @@ def load_model(model_path, args, config, device=torch.device('cuda')):
             config.NOISE_SCHEDULE,
             config.RESIDUAL_CHANNELS,
             config.RESIDUAL_LAYERS,
-            )
+            ).to(device)
     elif args.arch.startswith('tsc'):
         model = TSCNet(num_channel=64, num_features=config.N_FFT// 2 + 1,
-                       noise_schedule=config.NOISE_SCHEDULE)
+                       noise_schedule=config.NOISE_SCHEDULE).to(device)
         
     checkpoint = torch.load(model_path, map_location=device)
     state_dict = checkpoint['state_dict']
@@ -240,9 +240,11 @@ def predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas,
     gamma = [0.2]
     for n in range(len(alpha) - 1, -1, -1):
         if n > 0:
-            predicted_noise_spec = model(noisy_spec,
-                                         torch.tensor([T[n]], device=audio.device)).squeeze(1)
-            predicted_noise = uncompressed_istft(predicted_noise_spec, config.N_FFT, 
+            est_real, est_imag = model(noisy_spec,
+                                         torch.tensor([T[n]], device=device))
+            est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
+            est_complex = torch.complex(est_real, est_imag).squeeze(1)
+            predicted_noise = uncompressed_istft(est_complex, config.N_FFT, 
                                                  config.HOP_SAMPLES, hamming_window)
             audio = c1[n] * audio + c2[n] * noisy_audio - c3[n] * predicted_noise
             noise = torch.randn_like(audio)
