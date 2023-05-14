@@ -284,7 +284,7 @@ def inference(args, config, model_path, data_paths):
             audio = predict(model, config, noisy_signal, alpha, beta, alpha_cum, 
                             sigmas, T,c1, c2, c3, delta, delta_bar, device)
         
-        elif args.arch.startswith('diffuse'):
+        elif args.arch.startswith('tsc'):
             audio = predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, 
                                 sigmas, T, c1, c2, c3, delta, delta_bar, device)
         audio = audio[:,:wlen]
