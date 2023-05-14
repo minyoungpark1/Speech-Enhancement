@@ -37,7 +37,7 @@ from argparse import ArgumentParser
 random.seed(23)
 
 from models.DiffuSE import DiffuSE
-from models.generator import TSCNet
+from models.tsc_diffusion import TSCNet
 from core.function import compressed_stft, uncompressed_istft
 from config import get_config
 from utils.compute_metrics import compute_metrics
@@ -114,7 +114,7 @@ def load_model(model_path, args, config, device=torch.device('cuda')):
     return model
 
 
-def inference_schedule(model, config, fast_sampling=False):
+def inference_schedule(config, fast_sampling=False):
     training_noise_schedule = np.array(config.NOISE_SCHEDULE)
     inference_noise_schedule = np.array(config.INFERENCE_NOISE_SCHEDULE) \
         if fast_sampling else training_noise_schedule
@@ -243,12 +243,13 @@ def predict_tsc(model, args, config, noisy_signal, alpha, beta, alpha_cum, sigma
     noisy = torch.cat([noisy, noisy[:, :padding_len]], dim=-1)
         
     audio = noisy_audio = noisy
-    noisy_spec = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, 
+    orig_spectrogram = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, 
                                  hamming_window, comp_type=args.comp_type)
-    
     gamma = [0.2]
     for n in range(len(alpha) - 1, -1, -1):
-        est_real, est_imag = model(noisy_spec,
+        noisy_spec = compressed_stft(audio, config.N_FFT, config.HOP_SAMPLES, 
+                                     hamming_window, comp_type=args.comp_type)
+        est_real, est_imag = model(noisy_spec, orig_spectrogram,
                                      torch.tensor([T[n]], device=device))
         est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
         est_complex = torch.complex(est_real, est_imag).squeeze(1)
@@ -271,7 +272,7 @@ def inference(args, config, model_path, data_paths):
     device = 'cuda:{}'.format(args.gpu)
     model = load_model(model_path, args, config, device)
     alpha, beta, alpha_cum, sigmas, T, c1, c2, c3, \
-        delta, delta_bar = inference_schedule(model, config, fast_sampling=args.fast)
+        delta, delta_bar = inference_schedule(config, fast_sampling=args.fast)
     
     metrics_total = np.zeros(6)
     

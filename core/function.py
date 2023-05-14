@@ -480,6 +480,9 @@ def train_tsc_diffusion(train_loader, model, criterion, optimizer, scaler,
         learning_rates.update(lr)
         
         with torch.cuda.amp.autocast(True):
+            orig_spectrogram = compressed_stft(noisy, config.N_FFT,
+                                         config.HOP_SAMPLES, hamming_window,
+                                         comp_type=args.comp_type)
             noisy_audio, combine_noise, t = add_noise(clean, noisy,
                                                       config.NOISE_SCHEDULE)
             noisy_spec = compressed_stft(noisy_audio, config.N_FFT,
@@ -490,7 +493,7 @@ def train_tsc_diffusion(train_loader, model, criterion, optimizer, scaler,
                                          comp_type=args.comp_type)
             combine_mag, combine_real, combine_imag = disassemble_spectrogram(combine_spec)
             
-            est_real, est_imag = model(noisy_spec, t)
+            est_real, est_imag = model(noisy_spec, orig_spectrogram, t)
             est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
             est_complex = torch.complex(est_real, est_imag).squeeze(1)
             
@@ -568,6 +571,9 @@ def validate_tsc_diffusion(valid_loader, model, criterion, scaler, logger,
         # compute output
         
         with torch.cuda.amp.autocast(True):
+            orig_spectrogram = compressed_stft(noisy, config.N_FFT,
+                                         config.HOP_SAMPLES, hamming_window,
+                                         comp_type=args.comp_type)
             noisy_audio, combine_noise, t = add_noise(clean, noisy,
                                                       config.NOISE_SCHEDULE)
             noisy_spec = compressed_stft(noisy_audio, config.N_FFT,
@@ -578,7 +584,7 @@ def validate_tsc_diffusion(valid_loader, model, criterion, scaler, logger,
                                          comp_type=args.comp_type)
             combine_mag, combine_real, combine_imag = disassemble_spectrogram(combine_spec)
             
-            est_real, est_imag = model(noisy_spec, t)
+            est_real, est_imag = model(noisy_spec, orig_spectrogram, t)
             est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
             est_complex = torch.complex(est_real, est_imag).squeeze(1)
             

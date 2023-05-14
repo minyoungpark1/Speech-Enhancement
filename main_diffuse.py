@@ -24,7 +24,7 @@ from timm.scheduler.cosine_lr import CosineLRScheduler
 
 from config import get_config
 from models.DiffuSE import DiffuSE
-from models.generator import TSCNet
+from models.tsc_diffusion import TSCNet
 from datasets.voicebank_dataset import VoicebankDataset, Collator
 from core.function import train, validate, train_tsc_diffusion, validate_tsc_diffusion
 from core.criterion import build_criterion

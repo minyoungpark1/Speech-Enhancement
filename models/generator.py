@@ -130,7 +130,7 @@ class ComplexDecoder(nn.Module):
 
 
 class TSCNet(nn.Module):
-    def __init__(self, num_channel=64, num_features=201, noise_schedule=None):
+    def __init__(self, num_channel=64, num_features=201):
         super(TSCNet, self).__init__()
         self.dense_encoder = DenseEncoder(in_channel=3, channels=num_channel)
 
@@ -141,13 +141,6 @@ class TSCNet(nn.Module):
 
         self.mask_decoder = MaskDecoder(num_features, num_channel=num_channel, out_channel=1)
         self.complex_decoder = ComplexDecoder(num_channel=num_channel)
-        if noise_schedule is not None:
-            self.diffusion = True
-            self.diffusion_embedding = DiffusionEmbedding(len(noise_schedule))
-            self.diffusion_projection1 = nn.Linear(512, 3)
-            self.diffusion_projection2 = nn.Linear(512, num_channel)
-        else:
-            self.diffusion = False
             
     def forward(self, x, diffusion_step=None):
         mag = x.abs().unsqueeze(1).permute(0, 1, 3, 2)
@@ -156,26 +149,11 @@ class TSCNet(nn.Module):
                           x.real.unsqueeze(1).permute(0, 1, 3, 2), 
                           x.imag.unsqueeze(1).permute(0, 1, 3, 2)], 
                          dim=1)
-        
-        
-        if self.diffusion:
-            diffusion_step = self.diffusion_embedding(diffusion_step)
-            diffusion_step1 = self.diffusion_projection1(diffusion_step)
-            diffusion_step1 = diffusion_step1[:,:,None,None]
-            diffusion_step2 = self.diffusion_projection2(diffusion_step)
-            diffusion_step2 = diffusion_step2[:,:,None,None]
-            
-            out_1 = self.dense_encoder(x_in+diffusion_step1)
-            out_2 = self.TSCB_1(out_1+diffusion_step2)
-            out_3 = self.TSCB_2(out_2+diffusion_step2)
-            out_4 = self.TSCB_3(out_3+diffusion_step2)
-            out_5 = self.TSCB_4(out_4+diffusion_step2)
-        else:
-            out_1 = self.dense_encoder(x_in)
-            out_2 = self.TSCB_1(out_1)
-            out_3 = self.TSCB_2(out_2)
-            out_4 = self.TSCB_3(out_3)
-            out_5 = self.TSCB_4(out_4)
+        out_1 = self.dense_encoder(x_in)
+        out_2 = self.TSCB_1(out_1)
+        out_3 = self.TSCB_2(out_2)
+        out_4 = self.TSCB_3(out_3)
+        out_5 = self.TSCB_4(out_4)
 
         mask = self.mask_decoder(out_5)
         out_mag = mask * mag
