@@ -6,13 +6,13 @@ This project provides an unofficial implementation of [SCP-GAN](https://arxiv.or
 ## Getting Started
 ### Installation
 This project was developed and tested in Ubuntu 22.04.
-Step 1.
+####Step 1.
 ```shell
 apt install g++
 ```
-Step 2.
+####Step 2.
 Install ([PyTorch](https://pytorch.org/get-started/locally/). Follow their instructions.
-Step 3.
+####Step 3.
 ```shell
 pip install -r requirements.txt
 ```
