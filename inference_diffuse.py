@@ -232,6 +232,12 @@ def predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas,
     c = torch.sqrt(noisy.size(-1) / torch.sum((noisy ** 2.0), dim=-1))
     noisy = torch.transpose(noisy, 0, 1)
     noisy = torch.transpose(noisy * c, 0, 1)
+    
+    length = noisy.size(-1)
+    frame_num = int(np.ceil(length / 100))
+    padded_len = frame_num * 100
+    padding_len = padded_len - length
+    noisy = torch.cat([noisy, noisy[:, :padding_len]], dim=-1)
         
     audio = noisy_audio = noisy
     noisy_spec = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, 
@@ -258,7 +264,7 @@ def predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas,
             audio = c1[n] * audio - c3[n] * predicted_noise
             audio = (1-gamma[n])*audio+gamma[n]*noisy_audio
     audio = audio / c
-    
+    audio = torch.flatten(audio)[:length].cpu().numpy()
     return audio
 
 def inference(args, config, model_path, data_paths):
