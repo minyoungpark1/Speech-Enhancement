@@ -161,9 +161,9 @@ class TSCNet(nn.Module):
         if self.diffusion:
             diffusion_step = self.diffusion_embedding(diffusion_step)
             diffusion_step1 = self.diffusion_projection1(diffusion_step)
-            diffusion_step1 = diffusion_step[:,:,None,None]
+            diffusion_step1 = diffusion_step1[:,:,None,None]
             diffusion_step2 = self.diffusion_projection2(diffusion_step)
-            diffusion_step2 = diffusion_step[:,:,None,None]
+            diffusion_step2 = diffusion_step2[:,:,None,None]
             
             out_1 = self.dense_encoder(x_in+diffusion_step1)
             out_2 = self.TSCB_1(out_1+diffusion_step2)
