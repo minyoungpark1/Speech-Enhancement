@@ -257,9 +257,11 @@ def predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas,
             newsigma = delta_bar[n]**0.5
             audio += newsigma * noise
         else:
-            predicted_noise_spec = model(noisy_spec, 
-                                         torch.tensor([T[n]], device=audio.device)).squeeze(1)
-            predicted_noise = uncompressed_istft(predicted_noise_spec, config.N_FFT, 
+            est_real, est_imag = model(noisy_spec,
+                                         torch.tensor([T[n]], device=device))
+            est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
+            est_complex = torch.complex(est_real, est_imag).squeeze(1)
+            predicted_noise = uncompressed_istft(est_complex, config.N_FFT, 
                                                  config.HOP_SAMPLES, hamming_window)
             audio = c1[n] * audio - c3[n] * predicted_noise
             audio = (1-gamma[n])*audio+gamma[n]*noisy_audio
