@@ -273,7 +273,7 @@ def inference(args, config, model_path, data_paths):
     device = 'cuda:{}'.format(args.gpu)
     model = load_model(model_path, args, config, device)
     alpha, beta, alpha_cum, sigmas, T, c1, c2, c3, \
-        delta, delta_bar, noise_schedule = inference_schedule(model, config, fast_sampling=args.fast)
+        delta, delta_bar = inference_schedule(model, config, fast_sampling=args.fast)
     
     metrics_total = np.zeros(6)
     
