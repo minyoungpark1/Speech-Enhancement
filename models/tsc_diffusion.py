@@ -18,7 +18,7 @@ class MergeBlock(nn.Module):
         self.diffusion_embedding = DiffusionEmbedding(len(noise_schedule))
         self.diffusion_projection = nn.Linear(512, num_channel)
         
-        self.diffusion_projection = nn.Conv2d(num_channel, num_channel*2, 1)
+        self.merge_diffusion = nn.Conv2d(num_channel, num_channel*2, 1)
         self.conditioner_projection = nn.Conv2d(num_channel, num_channel*2, 1)
         
         self.output_residual = nn.Conv1d(num_channel, num_channel, 1)
@@ -30,7 +30,7 @@ class MergeBlock(nn.Module):
         
         conditioner = self.conditioner_projection(conditioner)
         y = x + diffusion_step
-        y = self.diffusion_projection(y) + conditioner
+        y = self.merge_diffusion(y) + conditioner
     
         gate, filter = torch.chunk(y, 2, dim=1)
         y = torch.sigmoid(gate) * torch.tanh(filter)
