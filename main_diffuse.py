@@ -331,8 +331,8 @@ def main_worker(gpu, ngpus_per_node, args, config):
                 'optimizer' : optimizer.state_dict(),
                 'scaler': scaler.state_dict(),
                 'best_loss': best_loss,
-            }, config.OUTPUT, is_best=is_best, filename='checkpoint.pth.tar')
-            logger.info('=> saving checkpoint: checkpoint.pth.tar')
+            }, config.OUTPUT, is_best=is_best, filename='checkpoint_{:04d}.pth.tar'.format(epoch))
+            logger.info('=> saving checkpoint: checkpoint_{:04d}.pth.tar'.format(epoch))
 
 
         msg = 'Train Loss: {:.3f}\t Validation Loss: {:.3f}'.format(
