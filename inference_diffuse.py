@@ -297,7 +297,7 @@ def inference(args, config, model_path, data_paths):
         elif args.arch.startswith('tsc'):
             audio = predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, 
                                 sigmas, T, c1, c2, c3, delta, delta_bar, device)
-        audio = audio[:,:wlen]
+        audio = audio[:wlen]
         metrics = compute_metrics(clean_signal, audio, 16000, 0)
         metrics = np.array(metrics)
         metrics_total += metrics
