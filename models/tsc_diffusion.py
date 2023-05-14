@@ -21,7 +21,7 @@ class MergeBlock(nn.Module):
         self.merge_diffusion = nn.Conv2d(num_channel, num_channel*2, 1)
         self.conditioner_projection = nn.Conv2d(num_channel, num_channel*2, 1)
         
-        self.output_residual = nn.Conv1d(num_channel, num_channel, 1)
+        self.output_residual = nn.Conv2d(num_channel, num_channel, 1)
     
     def forward(self, x, conditioner, diffusion_step):
         diffusion_step = self.diffusion_embedding(diffusion_step)
