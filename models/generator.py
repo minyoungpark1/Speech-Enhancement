@@ -157,6 +157,7 @@ class TSCNet(nn.Module):
                          dim=1)
         
         out_1 = self.dense_encoder(x_in)
+        print(x_in.shape)
         
         if self.diffusion:
             diffusion_step = self.diffusion_embedding(diffusion_step)
@@ -172,6 +173,7 @@ class TSCNet(nn.Module):
             out_3 = self.TSCB_2(out_2)
             out_4 = self.TSCB_3(out_3)
             out_5 = self.TSCB_4(out_4)
+        print(out_5.shape)
 
         mask = self.mask_decoder(out_5)
         out_mag = mask * mag
