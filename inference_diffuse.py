@@ -305,7 +305,7 @@ def inference(args, config, model_path, data_paths):
         # audio = snr_process(audio,noisy_signal)
         if args.save:
             output_name = os.path.join(output_path, noisy_file_path.split("/")[-1])
-            torchaudio.save(output_name, audio.cpu(), sample_rate=16000)
+            torchaudio.save(output_name, torch.tensor(audio).unsqueeze(0), sample_rate=16000)
     return metrics_total
     
 def main():
