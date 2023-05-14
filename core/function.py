@@ -483,9 +483,11 @@ def train_tsc_diffusion(train_loader, model, criterion, optimizer, scaler,
             noisy_audio, combine_noise, t = add_noise(clean, noisy,
                                                       config.NOISE_SCHEDULE)
             noisy_spec = compressed_stft(noisy_audio, config.N_FFT,
-                                         config.HOP_SAMPLES, hamming_window)
+                                         config.HOP_SAMPLES, hamming_window,
+                                         comp_type=args.comp_type)
             combine_spec = compressed_stft(combine_noise, config.N_FFT,
-                                         config.HOP_SAMPLES, hamming_window)
+                                         config.HOP_SAMPLES, hamming_window,
+                                         comp_type=args.comp_type)
             combine_mag, combine_real, combine_imag = disassemble_spectrogram(combine_spec)
             
             est_real, est_imag = model(noisy_spec, t)
@@ -493,7 +495,8 @@ def train_tsc_diffusion(train_loader, model, criterion, optimizer, scaler,
             est_complex = torch.complex(est_real, est_imag).squeeze(1)
             
             predicted = uncompressed_istft(est_complex, config.N_FFT, 
-                                               config.HOP_SAMPLES, hamming_window)
+                                               config.HOP_SAMPLES, hamming_window,
+                                               comp_type=args.comp_type)
             
             loss_mag = criterion(est_complex.abs(), combine_mag)
             time_loss = torch.mean(torch.abs(predicted - combine_noise))

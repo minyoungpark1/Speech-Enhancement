@@ -144,7 +144,8 @@ class TSCNet(nn.Module):
         if noise_schedule is not None:
             self.diffusion = True
             self.diffusion_embedding = DiffusionEmbedding(len(noise_schedule))
-            self.diffusion_projection = nn.Linear(512, num_channel)
+            self.diffusion_projection1 = nn.Linear(512, 3)
+            self.diffusion_projection2 = nn.Linear(512, num_channel)
         else:
             self.diffusion = False
             
@@ -156,24 +157,25 @@ class TSCNet(nn.Module):
                           x.imag.unsqueeze(1).permute(0, 1, 3, 2)], 
                          dim=1)
         
-        out_1 = self.dense_encoder(x_in)
-        print(x_in.shape)
         
         if self.diffusion:
             diffusion_step = self.diffusion_embedding(diffusion_step)
-            diffusion_step = self.diffusion_projection(diffusion_step)
-            diffusion_step = diffusion_step[:,:,None,None]
+            diffusion_step1 = self.diffusion_projection1(diffusion_step)
+            diffusion_step1 = diffusion_step[:,:,None,None]
+            diffusion_step2 = self.diffusion_projection2(diffusion_step)
+            diffusion_step2 = diffusion_step[:,:,None,None]
             
-            out_2 = self.TSCB_1(out_1+diffusion_step)
-            out_3 = self.TSCB_2(out_2+diffusion_step)
-            out_4 = self.TSCB_3(out_3+diffusion_step)
-            out_5 = self.TSCB_4(out_4+diffusion_step)
+            out_1 = self.dense_encoder(x_in+diffusion_step1)
+            out_2 = self.TSCB_1(out_1+diffusion_step2)
+            out_3 = self.TSCB_2(out_2+diffusion_step2)
+            out_4 = self.TSCB_3(out_3+diffusion_step2)
+            out_5 = self.TSCB_4(out_4+diffusion_step2)
         else:
+            out_1 = self.dense_encoder(x_in)
             out_2 = self.TSCB_1(out_1)
             out_3 = self.TSCB_2(out_2)
             out_4 = self.TSCB_3(out_3)
             out_5 = self.TSCB_4(out_4)
-        print(out_5.shape)
 
         mask = self.mask_decoder(out_5)
         out_mag = mask * mag

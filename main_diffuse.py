@@ -105,6 +105,9 @@ def parse_option():
     
     parser.add_argument('--crop-len', default=1, type=int,
                         help='Length to crop audio signals in second (default: 1 sec)')
+    parser.add_argument('--comp-type', default='pow', type=str,
+                        choices=['norm', 'log', 'pow', 'none'],
+                        help='Type of final spectrogram compression method (default: pow)')
 
     args, unparsed = parser.parse_known_args()
     config = get_config(args)

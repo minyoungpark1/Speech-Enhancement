@@ -69,6 +69,9 @@ def parse_option():
                         help='End epoch to validate')
     parser.add_argument('--gpu', default=0, type=int,
                         help='GPU id to use.')
+    parser.add_argument('--comp-type', default='pow', type=str,
+                        choices=['norm', 'log', 'pow', 'none'],
+                        help='Type of final spectrogram compression method (default: pow)')
     
     parser.add_argument(
         "--opts",
@@ -225,7 +228,7 @@ def predict(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas,
 
 
 @torch.no_grad()
-def predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas, 
+def predict_tsc(model, args, config, noisy_signal, alpha, beta, alpha_cum, sigmas, 
                 T, c1, c2, c3, delta, delta_bar, device=torch.device('cuda')):
     noisy = torch.tensor(noisy_signal).unsqueeze(0).to(device)
     hamming_window = torch.hamming_window(config.N_FFT).to(device)
@@ -241,28 +244,23 @@ def predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas,
         
     audio = noisy_audio = noisy
     noisy_spec = compressed_stft(noisy, config.N_FFT, config.HOP_SAMPLES, 
-                                 hamming_window)
+                                 hamming_window, comp_type=args.comp_type)
     
     gamma = [0.2]
     for n in range(len(alpha) - 1, -1, -1):
+        est_real, est_imag = model(noisy_spec,
+                                     torch.tensor([T[n]], device=device))
+        est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
+        est_complex = torch.complex(est_real, est_imag).squeeze(1)
+        predicted_noise = uncompressed_istft(est_complex, config.N_FFT, 
+                                             config.HOP_SAMPLES, hamming_window,
+                                             comp_type=args.comp_type)
         if n > 0:
-            est_real, est_imag = model(noisy_spec,
-                                         torch.tensor([T[n]], device=device))
-            est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
-            est_complex = torch.complex(est_real, est_imag).squeeze(1)
-            predicted_noise = uncompressed_istft(est_complex, config.N_FFT, 
-                                                 config.HOP_SAMPLES, hamming_window)
             audio = c1[n] * audio + c2[n] * noisy_audio - c3[n] * predicted_noise
             noise = torch.randn_like(audio)
             newsigma = delta_bar[n]**0.5
             audio += newsigma * noise
         else:
-            est_real, est_imag = model(noisy_spec,
-                                         torch.tensor([T[n]], device=device))
-            est_real, est_imag = est_real.permute(0, 1, 3, 2), est_imag.permute(0, 1, 3, 2)
-            est_complex = torch.complex(est_real, est_imag).squeeze(1)
-            predicted_noise = uncompressed_istft(est_complex, config.N_FFT, 
-                                                 config.HOP_SAMPLES, hamming_window)
             audio = c1[n] * audio - c3[n] * predicted_noise
             audio = (1-gamma[n])*audio+gamma[n]*noisy_audio
     audio = audio / c
@@ -295,8 +293,9 @@ def inference(args, config, model_path, data_paths):
                             sigmas, T,c1, c2, c3, delta, delta_bar, device)
         
         elif args.arch.startswith('tsc'):
-            audio = predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, 
-                                sigmas, T, c1, c2, c3, delta, delta_bar, device)
+            audio = predict_tsc(model, args, config, noisy_signal, alpha, beta,
+                                alpha_cum,  sigmas, T, c1, c2, c3, delta, 
+                                delta_bar, device)
         audio = audio[:wlen]
         metrics = compute_metrics(clean_signal, audio, 16000, 0)
         metrics = np.array(metrics)
