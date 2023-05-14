@@ -266,7 +266,7 @@ def predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas,
             audio = c1[n] * audio - c3[n] * predicted_noise
             audio = (1-gamma[n])*audio+gamma[n]*noisy_audio
     audio = audio / c
-    audio = torch.flatten(audio)[:length].cpu().numpy()
+    audio = audio[:,:length].cpu().numpy()
     return audio
 
 def inference(args, config, model_path, data_paths):
