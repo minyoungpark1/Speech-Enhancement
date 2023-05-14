@@ -220,7 +220,7 @@ def predict(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas,
             audio = c1[n] * audio - c3[n] * predicted_noise
             audio = (1-gamma[n])*audio+gamma[n]*noisy_audio
             audio = torch.clamp(audio, -1.0, 1.0)
-            
+    audio = torch.flatten(audio).cpu().numpy()            
     return audio
 
 
@@ -266,7 +266,7 @@ def predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas,
             audio = c1[n] * audio - c3[n] * predicted_noise
             audio = (1-gamma[n])*audio+gamma[n]*noisy_audio
     audio = audio / c
-    audio = audio[:,:length].cpu().numpy()
+    audio = torch.flatten(audio)[:length].cpu().numpy()
     return audio
 
 def inference(args, config, model_path, data_paths):
@@ -298,7 +298,7 @@ def inference(args, config, model_path, data_paths):
             audio = predict_tsc(model, config, noisy_signal, alpha, beta, alpha_cum, 
                                 sigmas, T, c1, c2, c3, delta, delta_bar, device)
         audio = audio[:,:wlen]
-        metrics = compute_metrics(clean_signal, torch.flatten(audio).cpu().numpy(), 16000, 0)
+        metrics = compute_metrics(clean_signal, audio, 16000, 0)
         metrics = np.array(metrics)
         metrics_total += metrics
 
