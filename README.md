@@ -6,13 +6,13 @@ This project provides an unofficial implementation of [SCP-GAN](https://arxiv.or
 ## Getting Started
 ### Installation
 This project was developed and tested in Ubuntu 22.04.
-####Step 1.
+#### Step 1.
 ```shell
 apt install g++
 ```
 ####Step 2.
 Install ([PyTorch](https://pytorch.org/get-started/locally/). Follow their instructions.
-####Step 3.
+#### Step 3.
 ```shell
 pip install -r requirements.txt
 ```
@@ -20,7 +20,6 @@ pip install -r requirements.txt
 ### Download VoiceBANK-DEMAND
 This project used [VoiceBank-DEMAND](https://datashare.ed.ac.uk/handle/10283/2791) dataset. This dataset consists of 30 speakers from the VoiceBank corpus, which is further divided into a training set and a testing set with 28 and 2 speakers, respectively. The training set consists of 11,572 individual recordings of 28 speakers from the VoiceBank corpus mixed with DEMAND noises and some artificial background noises at the SNRs of 0, 5, 10, and 15. dB. The testing set has 824 utterances of 2 speakers mixed with unseen DEMAND noises at the SNRs of 2.5, 7.5, 12.5, and 17.5 dB. If you want to train/test yourself, please click "VoiceBank-DEMAND" above to download the dataset.
 
-### Train 
 ## Experiment & results
 ## Discussion
 ## TODO

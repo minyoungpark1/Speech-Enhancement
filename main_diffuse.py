@@ -31,7 +31,7 @@ from core.criterion import build_criterion
 from core.optimizer import build_optimizer
 from utils.utils import create_logger, save_checkpoint
 
-model_names = ['diffuse', 'tsc_diffuse'
+model_names = ['diffuse', 'tsc-diffuse'
                ]
 
 def parse_option():
