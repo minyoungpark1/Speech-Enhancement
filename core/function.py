@@ -228,7 +228,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
         est_audio = uncompressed_istft(est_complex, config.N_FFT, 
                                 config.HOP_SAMPLES, hamming_window)
             
-        if args.arch == 'scp-gan':
+        if args.arch == 'scp' or args.arch == 'cp':
             ################### Consistency Preserving Network #################
             # Enhanced audio pipeline
             est_prime_spec = compressed_stft(est_audio, config.N_FFT, 
@@ -289,7 +289,7 @@ def train_gan(train_loader, model, discriminator, criterion, optimizer, optimize
             
             L_E = criterion(D_Gx_y.flatten(), Q_Gx_y)
             
-            if args.arch == 'scp-gan':
+            if args.arch == 'scp' or args.arch == 'sc':
                 Q_y_y = batch_pesq(clean_audio_list, clean_audio_list)
                 L_C = criterion(D_y_y.flatten(), Q_y_y)
                 
@@ -371,7 +371,7 @@ def validate_gan(valid_loader, model, discriminator, criterion, logger,
         est_audio = uncompressed_istft(est_complex, config.N_FFT, 
                                 config.HOP_SAMPLES, hamming_window)
     
-        if args.arch == 'scp-gan':
+        if args.arch == 'scp' or args.arch == 'cp':
             ################### Consistency Presering Network #################
             # Enhanced audio pipeline
             est_prime_spec = compressed_stft(est_audio, config.N_FFT, 

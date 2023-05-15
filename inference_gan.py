@@ -167,6 +167,7 @@ if __name__ == '__main__':
 
 # CDifuSE
 # pesq: 2.205      csig: 3.634     cbak: 2.891     covl: 2.953     ssnr: 4.250     stoi: 0.901
+# pesq: 2.334	 csig: 3.730	 cbak: 2.655	 covl: 3.036	 ssnr: 0.904	 stoi: 0.915
 
 # CMGAN
 # pesq: 3.231      csig: 4.522     cbak: 3.804     covl: 3.958     ssnr: 10.34     stoi: 0.953

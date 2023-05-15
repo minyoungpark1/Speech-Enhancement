@@ -29,7 +29,7 @@ from core.function import train_gan, validate_gan
 from core.optimizer import build_optimizer
 from utils.utils import create_logger, save_checkpoint
 
-model_names = ['scp-gan', 'cmgan'
+model_names = ['scp', 'cp', 'sc', 'cmgan'
                ]
 
 def parse_option():
