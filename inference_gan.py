@@ -182,4 +182,6 @@ if __name__ == '__main__':
 # pesq: 2.673	 csig: 4.033	 cbak: 3.537	 covl: 3.401	 ssnr: 10.420	 stoi: 0.943
 # pesq: 2.533	 csig: 3.827	 cbak: 3.459	 covl: 3.229	 ssnr: 10.185	 stoi: 0.948
 # pesq: 2.535	 csig: 3.836	 cbak: 3.458	 covl: 3.235	 ssnr: 10.160	 stoi: 0.948
-# 
+
+# SC
+# pesq: 3.287	 csig: 4.539	 cbak: 3.860	 covl: 4.007
