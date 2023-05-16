@@ -501,13 +501,15 @@ def train_tsc_diffusion(train_loader, model, criterion, optimizer, scaler,
                                                config.HOP_SAMPLES, hamming_window,
                                                comp_type=args.comp_type)
             
-            loss_mag = criterion(est_complex.abs(), combine_mag)
+            # loss_mag = criterion(est_complex.abs(), combine_mag)
             time_loss = torch.mean(torch.abs(predicted - combine_noise))
-            loss_ri = criterion(est_real.squeeze(1), combine_real) + \
-                criterion(est_imag.squeeze(1), combine_imag)
-            loss = config.LOSS_WEIGHTS[0] * loss_ri + \
-                config.LOSS_WEIGHTS[1] * loss_mag + \
-                    config.LOSS_WEIGHTS[2] * time_loss
+            # loss_ri = criterion(est_real.squeeze(1), combine_real) + \
+            #     criterion(est_imag.squeeze(1), combine_imag)
+            
+            # loss = config.LOSS_WEIGHTS[0] * loss_ri + \
+            #     config.LOSS_WEIGHTS[1] * loss_mag + \
+            #         config.LOSS_WEIGHTS[2] * time_loss
+            loss = time_loss
 
         losses.update(loss.item(), clean.size(0))
 
@@ -592,14 +594,14 @@ def validate_tsc_diffusion(valid_loader, model, criterion, scaler, logger,
                                                config.HOP_SAMPLES, hamming_window,
                                                comp_type=args.comp_type)
             
-            loss_mag = criterion(est_complex.abs(), combine_mag)
+            # loss_mag = criterion(est_complex.abs(), combine_mag)
             time_loss = torch.mean(torch.abs(predicted - combine_noise))
-            loss_ri = criterion(est_real.squeeze(1), combine_real) + \
-                criterion(est_imag.squeeze(1), combine_imag)
-            loss = config.LOSS_WEIGHTS[0] * loss_ri + \
-                config.LOSS_WEIGHTS[1] * loss_mag + \
-                    config.LOSS_WEIGHTS[2] * time_loss
-                    
+            # loss_ri = criterion(est_real.squeeze(1), combine_real) + \
+            #     criterion(est_imag.squeeze(1), combine_imag)
+            # loss = config.LOSS_WEIGHTS[0] * loss_ri + \
+            #     config.LOSS_WEIGHTS[1] * loss_mag + \
+            #         config.LOSS_WEIGHTS[2] * time_loss
+            loss = time_loss
         losses.update(loss.item(), clean.size(0))
 
         # measure elapsed time

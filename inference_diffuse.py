@@ -203,7 +203,7 @@ def predict(model, config, noisy_signal, alpha, beta, alpha_cum, sigmas,
     spectrogram = spectrogram.to(device)
     audio = torch.randn(spectrogram.shape[0], 
                         config.HOP_SAMPLES * spectrogram.shape[-1], device=device)
-    noise_scale = torch.from_numpy(alpha_cum**0.5).float().unsqueeze(1).to(device)
+    # noise_scale = torch.from_numpy(alpha_cum**0.5).float().unsqueeze(1).to(device)
     noisy_audio = torch.zeros(spectrogram.shape[0], 
                               config.HOP_SAMPLES * spectrogram.shape[-1], device=device)
     noisy_audio[:,:noisy_signal.shape[0]] = noisy_signal
