@@ -27,7 +27,7 @@ from models.discriminator import Discriminator
 from datasets.voicebank_dataset import VoicebankDataset, Collator
 from core.function import train_gan, validate_gan
 from core.optimizer import build_optimizer
-from utils.utils import create_logger, save_checkpoint
+from utils.utils import create_logger, save_checkpoint, kaiming_init
 
 model_names = ['scp', 'cp', 'sc', 'cmgan'
                ]
@@ -144,6 +144,8 @@ def main_worker(gpu, ngpus_per_node, args, config):
     print("=> creating model '{}'".format(args.arch))
     model = TSCNet(num_channel=64, num_features=config.N_FFT// 2 + 1)
     discriminator = Discriminator(ndf=16)
+    model.apply(kaiming_init)
+    discriminator.apply(kaiming_init)
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')

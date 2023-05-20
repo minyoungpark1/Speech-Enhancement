@@ -115,7 +115,6 @@ def parse_option():
     return args, config
 
 
-
 def main():
     args, config = parse_option()
 

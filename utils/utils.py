@@ -12,6 +12,7 @@ import torch
 import shutil
 import logging
 import functools
+import torch.nn as nn
 from pathlib import Path
 from termcolor import colored
 
@@ -87,3 +88,17 @@ def adjust_learning_rate(optimizers, epoch, config):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
     return lr+config.TRAIN.SCHEDULER.MIN_LR
+
+def kaiming_init(m):
+    if isinstance(m, nn.Linear):
+        torch.nn.init.kaiming_normal_(m.weight)
+        if m.bias is not None:
+            m.bias.data.fill_(0.01)
+    if isinstance(m, nn.Conv2d):
+        torch.nn.init.kaiming_normal_(m.weight)
+        if m.bias is not None:
+            m.bias.data.fill_(0.01)
+    if isinstance(m, nn.Conv1d):
+        torch.nn.init.kaiming_normal_(m.weight)
+        if m.bias is not None:
+            m.bias.data.fill_(0.01)
